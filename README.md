@@ -36,6 +36,15 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 - **Agentic pipeline** — LangGraph state machine: topic analysis → content plan →
   draft → validate → image → human review → publish, with a `MemorySaver`
   checkpointer and `interrupt()`-based human-in-the-loop approval gate.
+- **Calendar + scheduled publishing** — a per-day Calendar view of scheduled and
+  published posts, and a background `scheduler` that publishes approved posts at
+  their `scheduled_at` time when the server is running.
+- **Brand-voice presets** — per-user voice profiles (tone, audience, word target,
+  emoji/bullet/story/CTA toggles). Select one in the generator, or create/tune
+  your own; a default profile ships so first use "just works".
+- **AI editing aids** — one-click **"Suggest edits"** (targeted copy improvements)
+  and a **"Suggest & apply"** quality pass that rewrites the draft in place for
+  review, plus regenerate (full / text / image) and post duplication.
 - **Post filtering** — every post is tagged with `priority` (High/Medium/Low) and
   `post_type` by the planner LLM; filter the library by priority, type, and status.
 - **Human-in-the-loop approval** — nothing reaches LinkedIn until the owner
@@ -43,20 +52,26 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   edited again — saving produces a **revision** that republishes a brand-new post.
 - **Hybrid validation** — deterministic rule engine (clichés, fabricated metrics,
   emoji cap, hashtag policy, section headers, length) plus an advisory LLM score,
-  with one-click "Suggest & apply" that rewrites the draft in place for review.
-- **Multi-provider LLM layer** — OpenAI-compatible providers (Qwen/Model Studio
-  default), or a deterministic offline **mock** provider.
-- **AI image generation** — **Gemini Flash Image** (via OpenRouter) as primary
-  with automatic failover to **Qwen Model Studio** (`wan2.1-t2i-turbo`), then an
-  SVG mock fallback for keyless demos.
+  as a collapsible quality gate with PASSED/FAILED status.
+- **Multi-provider LLM layer** — OpenAI-compatible providers behind one interface,
+  selected via `TEXT_PROVIDER`: **Groq** (**`openai/gpt-oss-120b`**, default — fast,
+  reasoning-capable, strict `json_schema` structured output), Qwen (`qwen-flash`),
+  OpenRouter, or a deterministic offline **mock**. `auto` picks the first available.
+- **AI image generation** — **Qwen Model Studio** (`wan2.2-t2i-flash`, default —
+  ~7s/image via DashScope) with automatic failover to **Gemini Flash Image**
+  (native `gemini-3.1-flash-image`, needs Google AI billing) → OpenRouter → an SVG
+  mock for keyless demos. Pick the provider with `IMAGE_PROVIDER`.
+- **Export** — download the whole library (owner-scoped) as **JSON, CSV or
+  Markdown** via `/api/posts/export`.
 - **Multilingual** — 100+ language picker (searchable) plus free-text custom
   languages; captions and any in-image text are generated in the chosen language.
-- **Structured, approachable UI** — 4-step review flow (Review & edit → Visual →
-  Quality gate → Hashtags & publish), Create/History tabs, phone/tablet/desktop
-  previews, light/dark/system theme, toasts, and an onboarding guide.
+- **Structured, approachable UI** — Create / **History** / **Calendar** tabs,
+  ⌘K **command palette**, phone/tablet/desktop previews, light/dark/system theme,
+  toasts with undo, loading skeletons, a full-screen generating overlay, and a
+  one-time "How it works" onboarding guide.
 - **Auditing** — Google Sheets row-per-post per user, plus a local JSONL audit log
   and a per-user JSON post store with full event history.
-- **Resilient** — rate limited API (configurable), structured logging with request
+- **Resilient** — rate limited generation endpoints (configurable), structured logging with request
   IDs, publish retry-safe endpoint, and dry-run modes everywhere.
 
 ## Project layout
@@ -69,10 +84,12 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 │   │   ├── core/                   # config (pydantic-settings), context, structlog setup
 │   │   ├── models/                 # Pydantic schemas, enums, PostRecord + JSON store
 │   │   ├── prompts/                # topic/content/image/validation prompt templates
-│   │   ├── services/               # llm, image_gen, linkedin, google_sheets, validator
+│   │   ├── services/               # llm, image_gen, linkedin, google_sheets, validator,
+│   │   │                           # voice profiles, engagement analytics, scheduler
 │   │   ├── agents/                 # LangGraph state, nodes, workflow (checkpointer, interrupt)
-│   │   └── api/routes/             # posts (generate/review/approve/publish), linkedin, health
-│   ├── tests/                      # 23 pytest tests (nodes, workflow, full API flow)
+│   │   └── api/routes/             # auth, posts (generate/review/approve/publish),
+│   │                               # voice-profiles, linkedin, health
+│   ├── tests/                      # 29 pytest tests (nodes, workflow, full API flow)
 │   ├── requirements.txt
 │   ├── requirements-dev.txt        # dev tooling (ruff)
 │   └── .env.example
@@ -81,7 +98,8 @@ app? "Continue as guest" unlocks the full flow in demo mode.
     │   ├── App.tsx                 # dashboard composition + state orchestration
     │   ├── theme.ts                # light/dark/system theme resolution + persistence
     │   ├── services/api.ts         # typed REST client (proxied through Vite)
-    │   └── components/             # generator, previews, editor, approval, history, toggle…
+    │   └── components/             # generator, editor, previews, history, calendar,
+    │                               # command palette, voice picker, toasts, skeletons…
     ├── vite.config.ts              # dev proxy /api → http://localhost:8000
     └── package.json
 ```
@@ -97,7 +115,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env                 # optionally paste OPENROUTER/GEMINI, QWEN, LINKEDIN creds
+cp .env.example .env                 # paste GROQ, QWEN, GEMINI, LINKEDIN creds as needed
 
 uvicorn app.main:app --reload --port 8000
 ```
@@ -121,6 +139,16 @@ curl -X POST http://localhost:8000/api/posts/generate \
      -d '{"user_query": "Why Agentic AI is reshaping software engineering"}'
 ```
 
+**Running providers (both keys optional):**
+
+| Text (`TEXT_PROVIDER`) | Image (`IMAGE_PROVIDER`) |
+| --- | --- |
+| `groq` — `openai/gpt-oss-120b` (default) | `qwen` — `wan2.2-t2i-flash` (default) |
+| `qwen` — `qwen-flash` (DashScope) | `gemini` — `gemini-3.1-flash-image` (needs billing) |
+| `openrouter` — any supported model | `openrouter` — e.g. gemini image |
+| `mock` — offline demo | `mock` — offline SVG demo |
+| `auto` — first available | `auto` — gemini → openrouter → qwen → mock |
+
 ## Demo without API keys
 
 `TEXT_PROVIDER=mock IMAGE_PROVIDER=mock uvicorn app.main:app --port 8000` produces realistic
@@ -142,23 +170,39 @@ works out of the box. (If port 8000 is busy, run on 8001 and start the UI with
 | `POST` | `/api/auth/logout` | Clear the session cookie |
 | `GET` | `/api/linkedin/status` | Current user's LinkedIn connection status |
 
-Every `/api/posts/*` endpoint requires auth and is scoped to the signed-in user.
+Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and is scoped to the signed-in user.
 
 ### Posts
 
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/posts/generate` | Run the agent: `{user_query}` → full post record |
+| `POST` | `/api/posts/batch-generate` | Generate N posts from a topic in one call |
 | `GET` | `/api/posts?limit&offset&priority&post_type&status` | List (filtered, owner-scoped) + counts |
+| `GET` | `/api/posts/export?format=json|csv|md` | Download the user's whole library |
 | `GET` | `/api/posts/{id}` | Get one record (owner only) |
 | `PUT` | `/api/posts/{id}` | Edit `final_post` / `hashtags` (owner only) |
+| `DELETE` | `/api/posts/{id}` | Delete one record; `DELETE /api/posts` clears all (with filters) |
 | `POST` | `/api/posts/{id}/regenerate` | Re-run generation for the post |
 | `POST` | `/api/posts/{id}/regenerate-image` | Regenerate just the image |
+| `POST` | `/api/posts/{id}/rework` | Rewrite the post to a specified angle |
+| `POST` | `/api/posts/{id}/duplicate` | Create a copy as a new draft |
+| `POST` | `/api/posts/{id}/suggest-edits` | AI copy-editing suggestions for the draft |
+| `POST` | `/api/posts/suggest` | Live editor suggestions for free text |
 | `POST` | `/api/posts/{id}/approve` | `{approved: true/false}` — approve (publishes) or reject |
 | `POST` | `/api/posts/{id}/publish` | Idempotent publish (retry-safe); 403 if not approved |
 | `GET` | `/api/health` | Providers, modes, `linkedin_configured` |
 
-**Post lifecycle:** `INITIALIZED → GENERATED → READY_FOR_REVIEW → APPROVED/REJECTED → PUBLISHED (or FAILED)`.
+### Voice profiles
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/voice-profiles` | List the user's brand-voice presets |
+| `POST` | `/api/voice-profiles` | Create a preset (name, tone, audience, formatting toggles) |
+| `PUT` | `/api/voice-profiles/{id}` | Update a preset |
+| `DELETE` | `/api/voice-profiles/{id}` | Delete a preset |
+
+**Post lifecycle:** `INITIALIZED → GENERATED → READY_FOR_REVIEW → APPROVED/REJECTED → PUBLISHED (or FAILED)`, with a `SCHEDULED` stage when a publish time is set and the scheduler is running.
 Editing a published post puts it back to `EDITED` and republishing creates a fresh LinkedIn post (a revision), keeping the original.
 **Filters:** `priority` (`High`/`Medium`/`Low`), `post_type` (`How-To`, `Thought Leadership`, `Insights`,
 `News`, `Motivational`, `Promotional`), `status` (lifecycle value, e.g. `PUBLISHED`).
@@ -206,7 +250,7 @@ With `GOOGLE_SHEETS_DRY_RUN=true` (default) every event still lands in `backend/
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # 23 tests, runs offline (mock providers)
+cd backend && .venv/bin/python -m pytest -q     # 29 tests, runs offline (mock providers)
 .venv/bin/ruff check app tests                  # lint (same rule set as CI)
 ```
 
