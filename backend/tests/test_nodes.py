@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.models.schemas import ContentPlan, HashtagOutput, LinkedInPostOutput, TopicAnalysis
+from app.models.schemas import ContentPlan, LinkedInPostOutput, TopicAnalysis
 from app.services.llm import MockTextProvider
 
 

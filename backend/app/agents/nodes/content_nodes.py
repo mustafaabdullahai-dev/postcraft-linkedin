@@ -99,7 +99,9 @@ DEFAULT_FORMATTING = {
 def formatting_directives(prefs) -> str:
     """Render the user's formatting toggles as explicit instructions for the LLM."""
     prefs = prefs if isinstance(prefs, dict) and prefs else DEFAULT_FORMATTING
-    on = lambda key, default: bool(prefs.get(key, default))
+
+    def on(key: str, default: bool) -> bool:
+        return bool(prefs.get(key, default))
     word_target = prefs.get("word_target") or 0
     length_row = (
         f"Target length: exactly ~{int(word_target)} words (hook + body + CTA, hashtags excluded; "
@@ -383,7 +385,6 @@ async def save_to_google_sheets(state: LinkedInPostState, ctx: NodeContext = Non
             "user_query": state.get("user_query", ""),
             "priority": state.get("priority", ""),
             "post_type": state.get("post_type", ""),
-            "topic": state.get("topic", ""),
             "topic": state.get("topic", ""),
             "audience": state.get("audience", ""),
             "content_angle": state.get("content_angle", ""),

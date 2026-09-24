@@ -86,6 +86,7 @@ class QwenImageProvider(ImageModelProvider):
 
     async def _dashscope_async(self, prompt: str) -> ImageResult:
         import asyncio
+
         import httpx
 
         submit_url = f"{self._services_base}/services/aigc/text2image/image-synthesis"

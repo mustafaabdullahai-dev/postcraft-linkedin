@@ -61,8 +61,8 @@ class ValidationRules:
         if post.count('"""') or re.search(r"```", post):
             issues.append("Code fences found in post")
 
-        bean_lines = [l for l in post.splitlines() if l.strip()]
-        if bean_lines and sum(1 for l in bean_lines if LINE_BEGIN_EMOJI_RE.match(l)) > max(1, len(bean_lines) // 3):
+        bean_lines = [line for line in post.splitlines() if line.strip()]
+        if bean_lines and sum(1 for line in bean_lines if LINE_BEGIN_EMOJI_RE.match(line)) > max(1, len(bean_lines) // 3):
             issues.append("Emojis start too many lines (max ~1/3 of lines)")
 
         emoji_count = len(EMOJI_RE.findall(post))
@@ -122,8 +122,8 @@ class ContentValidator:
         score = 1.0
         if self._text_provider is not None:
             try:
-                from app.prompts.validation import VALIDATION_HUMAN, VALIDATION_SYSTEM
                 from app.models.schemas import ValidationOutput as _VO
+                from app.prompts.validation import VALIDATION_HUMAN, VALIDATION_SYSTEM
 
                 advisory: Optional[ValidationOutput] = None
                 advisory = await self._text_provider.structured(

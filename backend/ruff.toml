@@ -1,0 +1,7 @@
+# Ruff config — curated pragmatic set for CI lint.
+# Start strict on correctness + imports; tighten rules later as code is adopted.
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]

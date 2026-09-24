@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Dict, List, Tuple
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 

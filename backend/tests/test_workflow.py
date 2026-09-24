@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.agents.state import LinkedInPostState
 from app.models.post import PostRecord
 
 
@@ -77,7 +76,6 @@ async def test_generation_failure_then_publish_retry(app_ctx):
         async def publish_text_post(self, *a, **k):
             raise RuntimeError("linkedin down")
 
-    from app.agents.nodes.content_nodes import publish_to_linkedin
 
     old = app_ctx.node_context.linkedin_publisher
     app_ctx.node_context.linkedin_publisher = FailingPub()

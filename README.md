@@ -1,5 +1,7 @@
 # PostCraft — AI LinkedIn content agent
 
+[![CI](https://github.com/mustafaabdullahai-dev/postcraft-linkedin/actions/workflows/ci.yml/badge.svg)](https://github.com/mustafaabdullahai-dev/postcraft-linkedin/actions/workflows/ci.yml)
+
 An **open-source, multi-user LinkedIn AI content generation, review & publishing
 platform** built with **FastAPI + LangChain + LangGraph (human-in-the-loop)** on
 the backend and **React + Vite + TypeScript + Tailwind** on the frontend.
@@ -72,6 +74,7 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 │   │   └── api/routes/             # posts (generate/review/approve/publish), linkedin, health
 │   ├── tests/                      # 23 pytest tests (nodes, workflow, full API flow)
 │   ├── requirements.txt
+│   ├── requirements-dev.txt        # dev tooling (ruff)
 │   └── .env.example
 └── frontend/
     ├── src/
@@ -204,7 +207,11 @@ With `GOOGLE_SHEETS_DRY_RUN=true` (default) every event still lands in `backend/
 
 ```bash
 cd backend && .venv/bin/python -m pytest -q     # 23 tests, runs offline (mock providers)
+.venv/bin/ruff check app tests                  # lint (same rule set as CI)
 ```
+
+CI (`.github/workflows/ci.yml`) runs both jobs on every push/PR:
+backend **ruff lint + pytest** and frontend **typecheck + build** (`tsc && vite build`).
 
 ## Production notes
 

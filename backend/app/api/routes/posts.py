@@ -10,7 +10,6 @@ from app.core.logging import get_logger
 from app.models.post import PostRecord
 from app.models.schemas import (
     ApprovalRequest,
-    FormattingPrefs,
     GenerateRequest,
     PostEditSuggestions,
     PublishRequest,
