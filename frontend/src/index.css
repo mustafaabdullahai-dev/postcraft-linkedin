@@ -1,0 +1,328 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── themes: light / dark (system default resolves to one of these) ─── */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fbfaf6;
+  --surface: #ffffff;
+  --surface-2: #faf8f3;
+  --ink: #221f1b;
+  --ink-soft: #45413a;
+  --muted: #6b665d;
+  --muted-2: #5e584f;
+  --faint: #7a736a;
+  --dead: #8a8378;
+  --line: #ece8df;
+  --line-2: #e6e1d7;
+  --line-strong: #cfc8bb;
+  --accent: #2f6fed;
+  --accent-soft: #eef3ff;
+  --accent-ink: #1c4fb0;
+  --ok: #0f8a6d;
+  --ok-soft: #dff3ec;
+  --bad: #c62b3c;
+  --bad-soft: #fbe0e2;
+  --warn: #8a6100;
+  --warn-soft: #f8eed8;
+  --sky: #0b6fb8;
+  --sky-soft: #dff0fb;
+  --btn-bg: #221f1b;
+  --btn-bg-hover: #3a352e;
+  --btn-ink: #ffffff;
+  --t-lavender: #ece7fb;
+  --t-lavender-d: #6a4fd1;
+  --t-mint: #dff3ec;
+  --t-mint-d: #0f8a6d;
+  --t-peach: #fbe7dc;
+  --t-peach-d: #c2570c;
+  --t-sky: #dff0fb;
+  --t-sky-d: #0b6fb8;
+  --t-butter: #f8eed8;
+  --t-butter-d: #8a6100;
+  --t-rose: #fbe0e2;
+  --t-rose-d: #c62b3c;
+  --t-slate: #eceae4;
+  --t-slate-d: #55514a;
+  --header-bg: rgba(251, 250, 246, 0.85);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121110;
+  --surface: #1c1a17;
+  --surface-2: #232120;
+  --ink: #efece5;
+  --ink-soft: #d8d3ca;
+  --muted: #a6a094;
+  --muted-2: #938d81;
+  --faint: #8f887a;
+  --dead: #6b6457;
+  --line: #2e2b27;
+  --line-2: #35312c;
+  --line-strong: #4a453d;
+  --accent: #7aa2ff;
+  --accent-soft: #182642;
+  --accent-ink: #b7cbff;
+  --ok: #3fd0a5;
+  --ok-soft: #10312a;
+  --bad: #ff8a97;
+  --bad-soft: #3a1a20;
+  --warn: #f0c14b;
+  --warn-soft: #352c12;
+  --sky: #6ec0ff;
+  --sky-soft: #0f2a44;
+  --btn-bg: #efece5;
+  --btn-bg-hover: #d8d3ca;
+  --btn-ink: #121110;
+  --t-lavender: #2a2450;
+  --t-lavender-d: #b9a9ff;
+  --t-mint: #11352c;
+  --t-mint-d: #54d6ab;
+  --t-peach: #3a2415;
+  --t-peach-d: #ff9d63;
+  --t-sky: #0f2a44;
+  --t-sky-d: #6ec0ff;
+  --t-butter: #33290d;
+  --t-butter-d: #f0c14b;
+  --t-rose: #3a171f;
+  --t-rose-d: #ff95a2;
+  --t-slate: #2a2823;
+  --t-slate-d: #c5bfb2;
+  --header-bg: rgba(18, 17, 16, 0.85);
+}
+
+body {
+  @apply antialiased;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--sky-soft);
+}
+
+/* ─── layout primitives ──────────────────────────────────── */
+.card {
+  @apply rounded-2xl border shadow-[0_1px_2px_rgba(34,31,27,0.04),0_8px_24px_-16px_rgba(34,31,27,0.18)];
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.label {
+  @apply font-mono text-[11px] font-medium uppercase tracking-[0.14em];
+  color: var(--muted);
+}
+
+.hint {
+  @apply text-xs;
+  color: var(--muted);
+}
+
+.kbd {
+  @apply rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-medium;
+  background: var(--surface-2);
+  border-color: var(--line-2);
+  color: var(--ink-soft);
+}
+
+/* semantic helpers used across the app (theme-aware) */
+.u-bg { background: var(--surface); }
+.u-bg-2 { background: var(--bg); }
+.u-tint { background: var(--surface-2); }
+.u-accent-soft { background: var(--accent-soft); }
+.u-line { border-color: var(--line); }
+.u-line-2 { border-color: var(--line-2); }
+.u-line-strong { border-color: var(--line-strong); }
+.u-ink { color: var(--ink); }
+.u-ink-soft { color: var(--ink-soft); }
+.u-muted { color: var(--muted); }
+.u-muted-2 { color: var(--muted-2); }
+.u-faint { color: var(--faint); }
+.u-dead { color: var(--dead); }
+.u-header {
+  background: var(--header-bg);
+  backdrop-filter: blur(8px);
+}
+
+/* ─── buttons ────────────────────────────────────────────── */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+}
+.btn-primary:hover { background: var(--btn-bg-hover); }
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--surface);
+  border-color: var(--line-2);
+  color: var(--ink-soft);
+}
+.btn-secondary:hover { background: var(--surface-2); border-color: var(--line-strong); }
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border bg-transparent px-4 py-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.btn-ghost:hover { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-ink); }
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--t-rose);
+  border-color: transparent;
+  color: var(--t-rose-d);
+}
+.btn-danger:hover { background: var(--bad-soft); }
+
+.btn-dark {
+  @apply inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+}
+.btn-dark:hover { background: var(--btn-bg-hover); }
+
+/* ─── inputs ─────────────────────────────────────────────── */
+.input {
+  @apply w-full rounded-xl border px-4 py-3 text-sm outline-none transition;
+  background: var(--surface);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+.input::placeholder { color: var(--faint); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.select {
+  @apply rounded-lg border px-2 py-1.5 text-xs outline-none transition;
+  background: var(--surface);
+  border-color: var(--line-2);
+  color: var(--ink-soft);
+}
+.select:focus { border-color: var(--accent); }
+.select option { background: var(--surface); color: var(--ink); }
+
+/* ─── tinted tags (reference palette) ────────────────────── */
+.tag {
+  @apply inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold;
+}
+.tag--lavender { background: var(--t-lavender); color: var(--t-lavender-d); }
+.tag--mint { background: var(--t-mint); color: var(--t-mint-d); }
+.tag--peach { background: var(--t-peach); color: var(--t-peach-d); }
+.tag--sky { background: var(--t-sky); color: var(--t-sky-d); }
+.tag--butter { background: var(--t-butter); color: var(--t-butter-d); }
+.tag--rose { background: var(--t-rose); color: var(--t-rose-d); }
+.tag--slate { background: var(--t-slate); color: var(--t-slate-d); }
+
+/* ─── selection list (hashtags) ──────────────────────────── */
+.chip-selected {
+  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition;
+  background: var(--t-sky);
+  color: var(--t-sky-d);
+}
+.chip-unselected {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition;
+  border-color: var(--line-strong);
+  color: var(--faint);
+}
+.chip-unselected:hover { border-color: var(--ink); color: var(--ink-soft); }
+
+/* ─── suggestion line ────────────────────────────────────── */
+.suggestion {
+  @apply flex items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition;
+  background: var(--surface-2);
+  border-color: var(--line-2);
+}
+.suggestion:hover { border-color: var(--line-strong); }
+
+/* ─── structured section cards (organized workspace) ─────── */
+.section-card {
+  @apply rounded-2xl border p-4 sm:p-5;
+  background: var(--surface);
+  border-color: var(--line);
+}
+.section-head {
+  @apply mb-3 flex items-center gap-2.5;
+}
+.section-step {
+  @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* ─── scroll reveal (reference .rv) ──────────────────────── */
+.rv {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.rv.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* toast entrance */
+.toast-in {
+  animation: toast-in 0.25s ease;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── accessibility ─────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* touch-friendly minimum height for interactive controls */
+input.input,
+textarea.input,
+select.select {
+  min-height: 44px;
+}
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger,
+.btn-dark {
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .rv {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─── misc ───────────────────────────────────────────────── */
+.divide-hair {
+  @apply divide-y;
+  --tw-divide-opacity: 1;
+  border-color: var(--line);
+}
+.divide-hair > * + * { border-color: var(--line); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }

@@ -1,0 +1,27 @@
+# Environment & secrets — never commit
+.env
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+backend/data/*.json
+backend/data/*.jsonl
+
+# Frontend
+node_modules/
+dist/
+.vite/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
