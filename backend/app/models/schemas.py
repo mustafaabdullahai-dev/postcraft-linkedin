@@ -14,6 +14,7 @@ class GenerationStatus(str, Enum):
     GENERATED = "GENERATED"
     READY_FOR_REVIEW = "READY_FOR_REVIEW"
     EDITED = "EDITED"
+    SCHEDULED = "SCHEDULED"
     PUBLISHING = "PUBLISHING"
     PUBLISHED = "PUBLISHED"
     FAILED = "FAILED"
@@ -174,6 +175,11 @@ class GenerateRequest(BaseModel):
     language: str = Field(default="English", min_length=2, max_length=40)
     # Formatting/style toggles chosen in the UI.
     formatting: FormattingPrefs = Field(default_factory=FormattingPrefs)
+    # Brand voice preset applied to this generation (see /api/voice-profiles).
+    voice_profile_id: Optional[str] = None
+    # How many distinct drafts to generate in one go (1, 2 or 3). >1 is handled
+    # by the dedicated /batch-generate route so /generate stays single-record.
+    variations: int = Field(default=1, ge=1, le=3)
 
 
 class ReworkRequest(BaseModel):
@@ -189,6 +195,9 @@ class UpdatePostRequest(BaseModel):
 
 class ApprovalRequest(BaseModel):
     approved: bool = True
+    # When set (future ISO datetime), the post is approved but NOT published
+    # immediately — the background scheduler publishes it at this moment.
+    scheduled_at: Optional[datetime] = None
 
 
 class PublishRequest(BaseModel):
@@ -200,11 +209,62 @@ class RegenerateRequest(BaseModel):
     regenerate_image: bool = False
 
 
+class RegenerateImageRequest(BaseModel):
+    """Optional manual prompt for image regeneration; empty means the art-director
+    LLM re-rolls a completely different concept automatically."""
+
+    prompt: Optional[str] = None
+
+
 class RecordStatusCounts(BaseModel):
     total: int = 0
     ready_for_review: int = 0
+    scheduled: int = 0
     published: int = 0
     failed: int = 0
+
+
+class VoiceProfile(BaseModel):
+    voice_id: str
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=200)
+    # Style guidance baked into plan + writer prompts.
+    tone: str = Field(default="", max_length=120)
+    audience: str = Field(default="", max_length=160)
+    # Optional per-preset overrides; None = fall back to the UI toggles.
+    word_target: int = Field(default=0, ge=0, le=1500)
+    emojis: Optional[bool] = None
+    bullets: Optional[bool] = None
+    short_paragraphs: Optional[bool] = None
+    practitioner_story: Optional[bool] = None
+    discussion_cta: Optional[bool] = None
+    is_default: bool = False
+
+
+class VoiceProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=200)
+    tone: str = Field(default="", max_length=120)
+    audience: str = Field(default="", max_length=160)
+    word_target: int = Field(default=0, ge=0, le=1500)
+    emojis: Optional[bool] = None
+    bullets: Optional[bool] = None
+    short_paragraphs: Optional[bool] = None
+    practitioner_story: Optional[bool] = None
+    discussion_cta: Optional[bool] = None
+
+
+class VoiceProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    description: Optional[str] = Field(default=None, max_length=200)
+    tone: Optional[str] = Field(default=None, max_length=120)
+    audience: Optional[str] = Field(default=None, max_length=160)
+    word_target: Optional[int] = Field(default=None, ge=0, le=1500)
+    emojis: Optional[bool] = None
+    bullets: Optional[bool] = None
+    short_paragraphs: Optional[bool] = None
+    practitioner_story: Optional[bool] = None
+    discussion_cta: Optional[bool] = None
 
 
 class HealthResponse(BaseModel):

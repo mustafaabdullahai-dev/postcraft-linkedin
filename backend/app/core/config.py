@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     qwen_enable_thinking: bool = False
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
     # OpenRouter (OpenAI-compatible aggregator) — any model id, e.g. qwen/qwen3.8-27b
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -48,12 +48,16 @@ class Settings(BaseSettings):
     structured_output_method: str = "function_calling"
 
     # Image model
-    image_provider: str = "auto"  # auto | qwen | openrouter | mock
-    qwen_image_model: str = "wan2.1-t2i-turbo"
+    image_provider: str = "auto"  # auto | qwen | openrouter | gemini | mock
+    qwen_image_model: str = "wan2.2-t2i-flash"  # flash tier is far faster than wan2.1 turbo queues
     # DashScope-native services endpoint used for async image synthesis + task polling.
     qwen_image_services_url: str = "https://dashscope-intl.aliyuncs.com/api/v1"
     image_size: str = "1024x1024"
     image_api_key: str = ""
+    # Native Google Gemini (generativelanguage.googleapis.com) image generation.
+    gemini_api_key: str = ""
+    gemini_image_model: str = "gemini-3.1-flash-image"
+    gemini_image_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     # LinkedIn
     linkedin_dry_run: bool = True

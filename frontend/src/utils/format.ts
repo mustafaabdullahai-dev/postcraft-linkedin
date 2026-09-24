@@ -1,10 +1,33 @@
+/** Render an ISO instant as the viewer's local date+time with a tz abbreviation (e.g. "24 Sep, 6:20 PM PKT"). */
+export function formatLocalTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso || "";
+  let tz = "";
+  try {
+    tz =
+      " " +
+      (new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "");
+  } catch {
+    tz = "";
+  }
+  return (
+    d.toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    }) + tz
+  );
+}
+
+/** Relative "3h ago" label; falls back to the viewer's local date+time for older timestamps. */
 export function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const secs = Math.round((Date.now() - then) / 1000);
   if (secs < 60) return `${secs}s ago`;
   if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
   if (secs < 86400) return `${Math.round(secs / 3600)}h ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatLocalTime(iso);
 }
 
 /** Tags from the authoritative hashtag line(s) of a post body (e.g. `#ai\n#agents`). */
@@ -25,6 +48,7 @@ export function parseHashtagLine(text: string): string[] {
 const STATUS_TAGS: Record<string, string> = {
   PUBLISHED: "tag--mint",
   READY_FOR_REVIEW: "tag--sky",
+  SCHEDULED: "tag--lavender",
   EDITED: "tag--sky",
   APPROVED: "tag--lavender",
   FAILED: "tag--rose",
@@ -40,6 +64,7 @@ const FRIENDLY_STATUS: Record<string, string> = {
   INITIALIZED: "Draft created",
   GENERATED: "Draft generated",
   READY_FOR_REVIEW: "Needs review",
+  SCHEDULED: "Scheduled",
   EDITED: "Edited",
   PUBLISHING: "Publishing…",
   PUBLISHED: "LIVE",
@@ -69,6 +94,9 @@ const EVENT_LABELS: Record<string, string> = {
   REVISION_SAVED: "Revision saved",
   APPROVED_PUBLISHED: "Approved & published",
   APPROVED_PUBLISH_FAILED: "Publish failed at approval",
+  APPROVED_SCHEDULED: "Approved & scheduled",
+  SCHEDULED_PUBLISHED: "Scheduled post went live",
+  SCHEDULED_PUBLISH_FAILED: "Scheduled publish failed",
   REJECTED: "Rejected",
   PUBLISH_RETRY: "Publish attempt",
   APPROVAL_FAILED: "Publish encountered an issue",

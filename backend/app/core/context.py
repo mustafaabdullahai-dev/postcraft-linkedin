@@ -8,6 +8,8 @@ from app.agents.nodes import NodeContext
 from app.core.config import Settings
 from app.models.post import PostStore
 from app.models.user import UserStore
+from app.models.voice import VoiceProfileStore
+from app.services.analytics import EngagementAnalytics
 from app.services.google_sheets import GoogleSheetsService
 from app.services.image_generation import get_image_provider
 from app.services.linkedin import LinkedInPublisher
@@ -32,6 +34,10 @@ class ApplicationContext:
         self.sheets_service = GoogleSheetsService(settings, data_dir / "audit.jsonl")
         self.store = PostStore(data_dir)
         self.user_store = UserStore(data_dir)
+        self.voice_store = VoiceProfileStore(data_dir)
+        self.engagement = EngagementAnalytics(
+            self.linkedin_publisher, dry_run=bool(settings.linkedin_dry_run)
+        )
 
         self.node_context = NodeContext(
             text_provider=self.text_provider,

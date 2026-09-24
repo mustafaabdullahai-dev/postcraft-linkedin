@@ -45,15 +45,30 @@ export interface PostRecord {
   google_sheet_status: string;
   linkedin_post_id: string | null;
   record_status: string;
+  scheduled_at: string | null;
+  published_at: string | null;
+  analytics: EngagementStats;
+  voice_profile_id: string | null;
+  voice_profile_name: string;
   created_at: string;
   updated_at: string;
   error: string | null;
   history: Array<{ event: string; at: string }>;
 }
 
+export interface EngagementStats {
+  likes: number;
+  comments: number;
+  shares: number;
+  impressions: number;
+  source?: string;
+  fetched_at?: string | null;
+}
+
 export interface StatusCounts {
   total: number;
   ready_for_review: number;
+  scheduled: number;
   published: number;
   failed: number;
 }
@@ -61,6 +76,7 @@ export interface StatusCounts {
 export interface PostListResponse {
   items: PostRecord[];
   counts: StatusCounts;
+  total: number;
 }
 
 export interface HealthInfo {
@@ -77,6 +93,25 @@ export interface PostFilters {
   priority?: string;
   post_type?: string;
   status?: string;
+  q?: string;
+  sort?: string;
+  from_date?: string;
+  to_date?: string;
+}
+
+export interface VoiceProfile {
+  voice_id: string;
+  name: string;
+  description: string;
+  tone: string;
+  audience: string;
+  word_target: number;
+  emojis: boolean | null;
+  bullets: boolean | null;
+  short_paragraphs: boolean | null;
+  practitioner_story: boolean | null;
+  discussion_cta: boolean | null;
+  is_default: boolean;
 }
 
 export interface SuggestResponse {

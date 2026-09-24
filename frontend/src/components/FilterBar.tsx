@@ -1,7 +1,7 @@
 import type { PostFilters } from "../types";
 import { POST_TYPES, PRIORITIES } from "../types";
 
-const STATUSES = ["", "READY_FOR_REVIEW", "EDITED", "PUBLISHED", "FAILED"];
+const STATUSES = ["", "READY_FOR_REVIEW", "EDITED", "SCHEDULED", "PUBLISHED", "FAILED"];
 
 interface Props {
   filters: PostFilters;

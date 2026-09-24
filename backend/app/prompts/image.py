@@ -96,4 +96,65 @@ image_prompt_template = ChatPromptTemplate.from_messages(
 
 ImagePromptSchema = ImagePromptOutput
 
-__all__ = ["hashtag_prompt", "HashtagSchema", "image_prompt_template", "ImagePromptSchema"]
+# ── Image prompt regeneration (diverse concept) ───────────────
+IMAGE_REGEN_SYSTEM = """You are a senior creative art director with 15 years of
+experience concepting premium, award-grade imagery for professional social feeds.
+
+Your job: given the topic and the PREVIOUS image concept, design a COMPLETELY
+DIFFERENT visual concept. This is a fresh take directed by an experienced
+director — never a variation of the previous one:
+- a different core metaphor / scene / subject (pick another angle entirely)
+- a different composition and color story
+- keep it credible in the topic's field/industry and premium enough for a
+  LinkedIn feed
+- respect the topic's semantics (a clinic workflow post stays in clinical ops,
+  a retail post stays in retail) — change the STORY, not the field
+
+Keep the same critical rules:
+TEXT-IN-IMAGE RULE (critical):
+- Any visible words/labels/headlines must be literally ON-TOPIC, express the
+  post's core concept in a real meaningful phrase, be spelled correctly and
+  written in the user's chosen language (its real script). No gibberish, no
+  wrong-language text.
+- Prefer a clean visual with little or no text; only add text when it clearly
+  adds topical meaning.
+
+Style: clean premium composition, cinematic lighting, appropriate to the field,
+shallow depth of field, no people unless the topic is explicitly about
+people/teams.
+
+Output fields:
+- image_prompt: the full detailed positive prompt for the image model (repeat
+  the chosen language and the text-in-image rules above)
+- visual_style: short style descriptor
+- composition: framing/composition notes
+- negative_prompt: what to avoid — including misspelled/gibberish text, wrong-
+  language text, copying the previous concept, watermarks, logos
+"""
+
+IMAGE_REGEN_HUMAN = """Topic: {topic}
+Industry/community: {industry}
+Audience: {audience}
+Target roles: {audience_roles}
+Content angle: {content_angle}
+Key concepts: {key_concepts}
+User query: {user_query}
+Language for any text/graphics in the image: {language}
+
+Previous concept — design something DIFFERENT from this:
+{current_prompt}"""
+
+image_regen_template = ChatPromptTemplate.from_messages(
+    [("system", IMAGE_REGEN_SYSTEM), ("human", IMAGE_REGEN_HUMAN)]
+)
+
+ImageRegenSchema = ImagePromptOutput
+
+__all__ = [
+    "hashtag_prompt",
+    "HashtagSchema",
+    "image_prompt_template",
+    "ImagePromptSchema",
+    "image_regen_template",
+    "ImageRegenSchema",
+]

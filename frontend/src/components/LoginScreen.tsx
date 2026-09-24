@@ -46,7 +46,7 @@ export default function LoginScreen({ onAuthed }: Props) {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="card rv w-full max-w-md space-y-6 p-8">
         <div className="space-y-2 text-center">
-          <img src="/favicon.png" alt="" className="mx-auto h-16 w-16 rounded-2xl" />
+          <img src="/favicon.png" alt="" className="brand-logo mx-auto h-16 w-16 rounded-2xl" />
           <h1 className="text-xl font-bold text-[var(--ink)]">PostCraft</h1>
           <p className="label">AI LinkedIn content agent</p>
           <p className="hint">

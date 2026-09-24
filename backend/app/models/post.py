@@ -47,6 +47,7 @@ class PostRecord(BaseModel):
     hashtags: List[str] = Field(default_factory=list)
 
     image_prompt: str = ""
+    image_negative_prompt: str = ""
     image_url: Optional[str] = None
     image_provider: str = ""
 
@@ -64,6 +65,18 @@ class PostRecord(BaseModel):
     google_sheet_status: str = "NOT_LOGGED"
 
     record_status: str = GenerationStatus.INITIALIZED.value
+
+    # Scheduling: future publish moment chosen at approval time. When set and
+    # record_status == "SCHEDULED", the background scheduler publishes on due.
+    scheduled_at: Optional[datetime] = None
+    # When the post actually went live (set on successful publish).
+    published_at: Optional[datetime] = None
+    # Engagement snapshot for published posts: {likes, comments, shares,
+    # impressions, fetched_at} — refreshed from the LinkedIn socialActions API.
+    analytics: Dict[str, Any] = Field(default_factory=dict)
+    # Brand voice preset applied at generation time (name kept for history).
+    voice_profile_id: Optional[str] = None
+    voice_profile_name: str = ""
 
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
@@ -129,6 +142,63 @@ class PostStore:
         with self._lock:
             return self._cache.get(record_id)
 
+    def _matches(
+        self,
+        rec: PostRecord,
+        owner_id: str = "",
+        priority: Optional[str] = None,
+        post_type: Optional[str] = None,
+        status: Optional[str] = None,
+        q: str = "",
+        from_date: str = "",
+        to_date: str = "",
+    ) -> bool:
+        query = q.strip().lower()
+        if owner_id and rec.owner_id != owner_id:
+            return False
+        if priority and rec.priority != priority:
+            return False
+        if post_type and rec.post_type != post_type:
+            return False
+        if status and rec.record_status != status:
+            return False
+        if query:
+            haystack = " ".join(
+                [
+                    rec.user_query,
+                    rec.topic,
+                    rec.generated_post,
+                    rec.final_post or "",
+                    " ".join(rec.hashtags),
+                    rec.record_id,
+                ]
+            ).lower()
+            if query not in haystack:
+                return False
+        if from_date or to_date:
+            # Calendar date = scheduled → published → created (first available).
+            ref = rec.scheduled_at or rec.published_at or rec.created_at
+            if ref is None:
+                return False
+            if from_date:
+                try:
+                    lo = datetime.fromisoformat(from_date)
+                    lo = lo if lo.tzinfo else lo.replace(tzinfo=timezone.utc)
+                    if ref < lo:
+                        return False
+                except ValueError:
+                    pass
+            if to_date:
+                try:
+                    hi = datetime.fromisoformat(to_date)
+                    hi = hi if hi.tzinfo else hi.replace(tzinfo=timezone.utc)
+                    # to_date is inclusive to the end of that day.
+                    if ref > hi.replace(hour=23, minute=59, second=59, microsecond=999999):
+                        return False
+                except ValueError:
+                    pass
+        return True
+
     def list(
         self,
         owner_id: str = "",
@@ -137,21 +207,56 @@ class PostStore:
         priority: Optional[str] = None,
         post_type: Optional[str] = None,
         status: Optional[str] = None,
+        q: str = "",
+        sort: str = "newest",
+        from_date: str = "",
+        to_date: str = "",
     ) -> List[PostRecord]:
         with self._lock:
             matches: List[PostRecord] = []
             for rec in self._cache.values():
-                if owner_id and rec.owner_id != owner_id:
-                    continue
-                if priority and rec.priority != priority:
-                    continue
-                if post_type and rec.post_type != post_type:
-                    continue
-                if status and rec.record_status != status:
-                    continue
-                matches.append(rec)
-            matches.sort(key=lambda r: r.updated_at, reverse=True)
+                if self._matches(
+                    rec, owner_id, priority, post_type, status, q, from_date, to_date
+                ):
+                    matches.append(rec)
+            matches.sort(
+                key=lambda r: r.updated_at,
+                reverse=sort != "oldest",
+            )
             return matches[offset : offset + limit]
+
+    def delete_all(
+        self,
+        owner_id: str = "",
+        priority: Optional[str] = None,
+        post_type: Optional[str] = None,
+        status: Optional[str] = None,
+        q: str = "",
+    ) -> int:
+        """Bulk-delete every non-published post matching the filters.
+
+        Published posts are kept as the user's public track record.
+        """
+        with self._lock:
+            doomed = [
+                rec.record_id
+                for rec in self._cache.values()
+                if rec.record_status != "PUBLISHED"
+                and self._matches(rec, owner_id, priority, post_type, status, q)
+            ]
+            for record_id in doomed:
+                del self._cache[record_id]
+            if doomed:
+                self._flush()
+            return len(doomed)
+
+    def delete(self, record_id: str) -> bool:
+        with self._lock:
+            if record_id not in self._cache:
+                return False
+            del self._cache[record_id]
+            self._flush()
+            return True
 
     def update(self, record_id: str, event: Optional[str] = None, **fields: Any) -> Optional[PostRecord]:
         with self._lock:

@@ -53,7 +53,7 @@ export default function ThemeToggle() {
   };
 
   return (
-    <div className="flex items-center gap-0.5 rounded-full border p-0.5" style={{ borderColor: "var(--line-2)" }}>
+    <div className="brand-ring flex items-center gap-0.5 rounded-full border p-0.5" style={{ borderColor: "var(--line-2)" }}>
       {OPTIONS.map(({ mode: m, label, icon }) => {
         const active = mode === m;
         return (

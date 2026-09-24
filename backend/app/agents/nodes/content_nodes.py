@@ -118,6 +118,10 @@ def formatting_directives(prefs) -> str:
         ("Practitioner story", "include a real-feeling practitioner perspective/example" if on("practitioner_story", False) else "practitioner insight without personal-story framing"),
         ("CTA", "end with a discussion CTA asking the audience a context-rich question" if on("discussion_cta", True) else "end with a concise takeaway close, no question"),
     ]
+    if prefs.get("voice_note"):
+        rows.insert(0, ("Brand voice", str(prefs["voice_note"])))
+    if prefs.get("variant_note"):
+        rows.insert(1, ("Variation", str(prefs["variant_note"])))
     return "\n".join(f"- {name}: {value}" for name, value in rows)
 
 
@@ -234,6 +238,29 @@ async def generate_image_prompt(state: LinkedInPostState, ctx: NodeContext = Non
         key_concepts=state.get("key_concepts", []),
         user_query=state["user_query"],
         language=state.get("language", "English"),
+    )
+    return {
+        "image_prompt": result.image_prompt,
+        "image_negative_prompt": result.negative_prompt,
+    }
+
+
+async def regenerate_image_prompt(state: LinkedInPostState, ctx: NodeContext = None) -> Dict[str, Any]:
+    """Re-roll the image concept through a senior art-director persona so the new
+    visual is DIFFERENT from the current one (new metaphor, composition, colors)."""
+    result: ImagePromptOutput = await ctx.text_provider.structured(
+        ImagePromptOutput,
+        image_prompts.IMAGE_REGEN_SYSTEM,
+        image_prompts.IMAGE_REGEN_HUMAN,
+        topic=state.get("topic", ""),
+        industry=state.get("industry", ""),
+        audience=state.get("audience", ""),
+        audience_roles=", ".join(state.get("audience_roles") or []),
+        content_angle=state.get("content_angle", ""),
+        key_concepts=state.get("key_concepts", []),
+        user_query=state["user_query"],
+        language=state.get("language", "English"),
+        current_prompt=state.get("image_prompt", ""),
     )
     return {
         "image_prompt": result.image_prompt,

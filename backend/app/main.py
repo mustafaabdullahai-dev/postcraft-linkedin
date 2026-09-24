@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Dict, List, Tuple
@@ -20,6 +21,7 @@ from app.core.logging import (
     request_id_var,
     unbind_context,
 )
+from app.services.scheduler import scheduler_loop
 
 logger = get_logger(__name__)
 
@@ -49,8 +51,17 @@ async def lifespan(app: FastAPI):
     app.state.app_ctx = ApplicationContext(settings)
     rate_limiter._per_minute = settings.rate_limit_per_minute
     logger.info("application started", environment=settings.environment)
-    yield
-    logger.info("application stopped")
+
+    scheduler_task = asyncio.create_task(scheduler_loop(app.state.app_ctx))
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("application stopped")
 
 
 app = FastAPI(
@@ -68,7 +79,7 @@ async def request_context(request: Request, call_next):
     bind_context(request_id=rid, method=request.method, path=request.url.path)
     start = time.perf_counter()
 
-    if request.url.path in ("/api/posts/generate", "/api/posts") and rate_limiter._per_minute > 0:
+    if request.url.path in ("/api/posts/generate", "/api/posts/batch-generate") and rate_limiter._per_minute > 0:
         ip = request.client.host if request.client else "unknown"
         ok, limit = rate_limiter.allow(ip)
         if not ok:

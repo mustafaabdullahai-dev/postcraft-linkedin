@@ -346,6 +346,7 @@ def get_text_provider(settings: Settings) -> TextModelProvider:
                 base_url=settings.groq_base_url,
                 model=settings.groq_model,
                 temperature=0.6,
+                model_kwargs={"max_completion_tokens": 8192},  # gpt-oss reasoning + strict json needs headroom
             ),
             name=f"groq:{settings.groq_model}",
             structured_method=settings.structured_output_method,

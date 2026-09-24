@@ -106,9 +106,13 @@ class QwenImageProvider(ImageModelProvider):
             resp.raise_for_status()
             task_id = ((resp.json().get("output") or {}).get("task_id") or "")
 
-            # poll
-            for _ in range(120):
-                await asyncio.sleep(3)
+            # poll — fast 1s polls early (flash tiers finish in seconds),
+            # then slow to 3s, with a generous overall stall budget.
+            light = True
+            for i in range(360):
+                await asyncio.sleep(1.0 if light else 3.0)
+                if i > 40:
+                    light = False
                 poll = await client.get(
                     f"{self._services_base}/tasks/{task_id}", headers=headers
                 )
@@ -136,6 +140,58 @@ class QwenImageProvider(ImageModelProvider):
         else:
             raise RuntimeError("Qwen image response missing url/b64_json")
         return ImageResult(uri, "qwen-image", _now())
+
+
+class GeminiImageProvider(ImageModelProvider):
+    """Native Google Gemini image generation via the generateContent REST API
+    (gemini-3.1-flash-image / Nano Banana 2). Text in -> inline image out."""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        model: str = "gemini-3.1-flash-image",
+        timeout: float = 120.0,
+    ):
+        self._api_key = api_key
+        self._base = base_url.rstrip("/")
+        self._model = model
+        self._timeout = timeout
+        self.name = f"gemini:{model}"
+
+    async def generate_image(self, prompt: str) -> ImageResult:
+        import httpx
+
+        url = f"{self._base}/models/{self._model}:generateContent"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+        }
+        headers = {
+            "x-goog-api-key": self._api_key,
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        candidates = data.get("candidates") or []
+        if not candidates:
+            # finishReason may explain the empty response (e.g. SAFETY).
+            reason = (data.get("promptFeedback") or {}).get("blockReason") or "no candidates"
+            raise RuntimeError(f"Gemini image generation returned {reason}")
+        for part in (candidates[0].get("content") or {}).get("parts") or []:
+            inline = part.get("inlineData") or part.get("inline_data")
+            if not inline:
+                continue
+            media = inline.get("mimeType") or inline.get("mime_type") or "image/png"
+            data_b64 = inline.get("data") or ""
+            if data_b64:
+                uri = f"data:{media};base64,{data_b64}"
+                return ImageResult(uri, f"gemini:{self._model}", _now())
+        raise RuntimeError("Gemini image response missing inline image data")
 
 
 class _CompatibleImageUnsupported(Exception):
@@ -171,12 +227,12 @@ class OpenRouterImageProvider(ImageModelProvider):
         import httpx
 
         url = f"{self._base}/images"
+        # NOTE: only documented params — no output_format (OpenRouter 400s on it).
         payload = {
             "model": self._model,
             "prompt": prompt,
             "n": 1,
             "aspect_ratio": self._aspect_ratio,
-            "output_format": "png",
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -286,6 +342,15 @@ def get_image_provider(settings: Settings) -> ImageModelProvider:
     if choice == "mock":
         return MockImageProvider()
 
+    gemini = (
+        GeminiImageProvider(
+            settings.gemini_api_key,
+            settings.gemini_image_base_url,
+            settings.gemini_image_model,
+        )
+        if settings.gemini_api_key
+        else None
+    )
     qwen_key = settings.image_api_key or settings.qwen_api_key
     qwen = (
         QwenImageProvider(
@@ -311,14 +376,20 @@ def get_image_provider(settings: Settings) -> ImageModelProvider:
         else None
     )
 
+    if choice == "gemini":
+        if not gemini:
+            logger.warning("image provider gemini selected but GEMINI_API_KEY missing")
+            return MockImageProvider()
+        return gemini
+
     if choice == "qwen":
         if not qwen:
             logger.warning("image provider qwen selected but QWEN_API_KEY missing")
             return MockImageProvider()
         return qwen
 
-    # Gemini (OpenRouter) is the primary image model; Qwen is the backup.
-    chain = [p for p in (openrouter, qwen) if p is not None]
+    # Gemini is the newest image stack; Qwen is the automatic backup.
+    chain = [p for p in (gemini, openrouter, qwen) if p is not None]
     if not chain:
         logger.warning("no image API key configured, falling back to mock")
         return MockImageProvider()
@@ -352,6 +423,7 @@ __all__ = [
     "ImageResult",
     "QwenImageProvider",
     "OpenRouterImageProvider",
+    "GeminiImageProvider",
     "MockImageProvider",
     "FailoverImageProvider",
     "get_image_provider",
