@@ -83,7 +83,8 @@ export default function HashtagDisplay({ hashtags, candidates, editing, onChange
             }}
             onBlur={commitInput}
             placeholder="add a tag…"
-            className="input !w-44 !rounded-full !py-1.5 !text-xs"
+            aria-label="Add a hashtag"
+            className="input !w-44 !rounded-full !py-1.5 !text-xs min-h-9 sm:min-h-0"
           />
           <p className="hint">
             Toggle generated tags · LLM-picked for SEO, you curate the final set.

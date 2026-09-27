@@ -4,6 +4,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.models.schemas import HashtagOutput, ImagePromptOutput
+from app.prompts.guidelines import image_rules_text
 
 # ── Hashtags ──────────────────────────────────────────────────
 HASHTAG_SYSTEM = """You are a LinkedIn hashtag strategist.
@@ -79,7 +80,9 @@ Output fields:
 - composition: framing/composition notes
 - negative_prompt: what to avoid — including misspelled/gibberish text, text in
   the wrong language, stray unrelated words, watermarks, logos
-"""
+
+LINKEDIN IMAGE GUIDELINES (authoritative — the concept MUST satisfy every one):
+""" + image_rules_text()
 
 IMAGE_PROMPT_HUMAN = """Topic: {topic}
 Industry/community: {industry}

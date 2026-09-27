@@ -45,6 +45,21 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 - **AI editing aids** — one-click **"Suggest edits"** (targeted copy improvements)
   and a **"Suggest & apply"** quality pass that rewrites the draft in place for
   review, plus regenerate (full / text / image) and post duplication.
+- **In-place manual editing** — add a **link** or a **block of text** anywhere in
+  the draft: place the caret in the post and insert; the panel shows exactly where
+  it will land ("inserts after …"). Every insert is markdown-safe.
+- **Text-only or text + image** — pick the output in Create (Topic tab). Text-only
+  skips both the image-prompt LLM call and the render, so it's faster and cheaper.
+- **Manual image upload** — besides AI generation, a user can attach a photo from
+  their own device. It is re-encoded server-side (EXIF orientation applied,
+  metadata/GPS stripped, resized to 1600px) and uploads to LinkedIn like any other.
+- **Copy for LinkedIn** — LinkedIn has no markdown renderer, so `**bold**` would
+  arrive as literal asterisks. The API strips markdown at the publish boundary and
+  the UI offers a **"Copy for LinkedIn"** button that does the same for paste-in.
+- **LinkedIn compliance, documented in-app** — the exact posting guidelines the
+  agent follows (text, image, safety) are a first-class API surface
+  (`GET /api/guidelines`) and a panel in the sidebar/mobile menu, with the
+  disclaimer that content is generated in line with LinkedIn's policies.
 - **Post filtering** — every post is tagged with `priority` (High/Medium/Low) and
   `post_type` by the planner LLM; filter the library by priority, type, and status.
 - **Human-in-the-loop approval** — nothing reaches LinkedIn until the owner
@@ -69,10 +84,18 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   ⌘K **command palette**, phone/tablet/desktop previews, light/dark/system theme,
   toasts with undo, loading skeletons, a full-screen generating overlay, and a
   one-time "How it works" onboarding guide.
+- **Mobile-first navigation** — on phones the account, theme and guidelines
+  collapse into a single navbar menu; the busy areas (History toolbar, review
+  sections, publish actions) all reflow and keep 44px tap targets.
 - **Auditing** — Google Sheets row-per-post per user, plus a local JSONL audit log
   and a per-user JSON post store with full event history.
-- **Resilient** — rate limited generation endpoints (configurable), structured logging with request
-  IDs, publish retry-safe endpoint, and dry-run modes everywhere.
+- **Hardened for public use** — security headers (CSP/HSTS/X-Frame-Options),
+  `/docs` gating, log redaction, LinkedIn OAuth tokens **encrypted at rest**,
+  per-IP rate limiting and per-user/global daily AI quotas (all configurable, `0`
+  disables), trusted-proxy aware client IPs, and a **startup guard that refuses to
+  boot** on an insecure production config.
+- **Resilient** — structured logging with request IDs, publish retry-safe
+  endpoint, approval that survives a restart, and dry-run modes everywhere.
 
 ## Project layout
 
@@ -80,17 +103,20 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 .
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                 # FastAPI app: CORS, rate limit, request-id, lifespan
-│   │   ├── core/                   # config (pydantic-settings), context, structlog setup
+│   │   ├── main.py                 # FastAPI app: CORS, security headers, rate limit,
+│   │   │                           # request-id, docs gating, startup guard, /uploads
+│   │   ├── core/                   # config (pydantic-settings), context, structlog
+│   │   │                           # (redaction), abuse (rate limit + quotas), crypto
 │   │   ├── models/                 # Pydantic schemas, enums, PostRecord + JSON store
-│   │   ├── prompts/                # topic/content/image/validation prompt templates
+│   │   ├── prompts/                # topic/content/image/validation prompts + guidelines
 │   │   ├── services/               # llm, image_gen, linkedin, google_sheets, validator,
 │   │   │                           # voice profiles, engagement analytics, scheduler
 │   │   ├── agents/                 # LangGraph state, nodes, workflow (checkpointer, interrupt)
-│   │   └── api/routes/             # auth, posts (generate/review/approve/publish),
-│   │                               # voice-profiles, linkedin, health
-│   ├── tests/                      # 29 pytest tests (nodes, workflow, full API flow)
+│   │   └── api/routes/             # auth, posts (generate/review/approve/publish/upload),
+│   │                               # voice-profiles, linkedin, health, guidelines
+│   ├── tests/                      # 61 pytest tests (nodes, workflow, API, markdown)
 │   ├── requirements.txt
+│   ├── requirements.lock.txt       # frozen, fully-pinned set
 │   ├── requirements-dev.txt        # dev tooling (ruff)
 │   └── .env.example
 └── frontend/
@@ -98,9 +124,11 @@ app? "Continue as guest" unlocks the full flow in demo mode.
     │   ├── App.tsx                 # dashboard composition + state orchestration
     │   ├── theme.ts                # light/dark/system theme resolution + persistence
     │   ├── services/api.ts         # typed REST client (proxied through Vite)
+    │   ├── hooks/                  # useReveal, useMediaQuery
+    │   ├── utils/                  # format, linkedin (markdown → LinkedIn plain text)
     │   └── components/             # generator, editor, previews, history, calendar,
-    │                               # command palette, voice picker, toasts, skeletons…
-    ├── vite.config.ts              # dev proxy /api → http://localhost:8000
+    │                               # command palette, mobile menu, guidelines panel…
+    ├── vite.config.ts              # dev proxy /api + /uploads → backend
     └── package.json
 ```
 
@@ -117,7 +145,7 @@ pip install -r requirements.txt
 
 cp .env.example .env                 # paste GROQ, QWEN, GEMINI, LINKEDIN creds as needed
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 Without any credentials the app runs fully in **mock + dry-run** mode (health endpoint reports the live providers).
@@ -127,14 +155,17 @@ Without any credentials the app runs fully in **mock + dry-run** mode (health en
 ```bash
 cd frontend
 npm install
-npm run dev                          # http://localhost:5173 (proxies /api → :8000)
+npm run dev                          # http://localhost:5174 (proxies /api + /uploads → :8001)
 ```
+
+Override with `VITE_DEV_PORT` / `VITE_PROXY_TARGET` if needed.
 
 ### 3. Verify
 
 ```bash
-curl http://localhost:8000/api/health
-curl -X POST http://localhost:8000/api/posts/generate \
+curl http://localhost:8001/api/health
+curl http://localhost:8001/api/guidelines
+curl -X POST http://localhost:8001/api/posts/generate \
      -H 'Content-Type: application/json' \
      -d '{"user_query": "Why Agentic AI is reshaping software engineering"}'
 ```
@@ -151,11 +182,11 @@ curl -X POST http://localhost:8000/api/posts/generate \
 
 ## Demo without API keys
 
-`TEXT_PROVIDER=mock IMAGE_PROVIDER=mock uvicorn app.main:app --port 8000` produces realistic
+`TEXT_PROVIDER=mock IMAGE_PROVIDER=mock uvicorn app.main:app --port 8001` produces realistic
 deterministic posts, generates an SVG image, and simulates LinkedIn publish + Sheets logging.
 On the login screen click **"Continue as guest (demo)"** — the entire review→approve→publish flow
-works out of the box. (If port 8000 is busy, run on 8001 and start the UI with
-`VITE_PROXY_TARGET=http://localhost:8001 npm run dev`.)
+works out of the box. (If port 8001 is busy, run on another port and start the UI with
+`VITE_PROXY_TARGET=http://localhost:<port> npm run dev`.)
 
 ## API overview (all JSON, base `/api`)
 
@@ -164,11 +195,13 @@ works out of the box. (If port 8000 is busy, run on 8001 and start the UI with
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/api/auth/linkedin/login` | Redirect to LinkedIn consent (302) |
-| `GET` | `/api/auth/linkedin/callback` | OAuth exchange → sets `session` cookie → redirect to frontend |
+| `GET` | `/api/auth/linkedin/callback` | OAuth exchange → redirect to frontend with a one-time `code` (+ `session` cookie) |
+| `GET` | `/api/auth/session?code=…` | Exchange the OAuth code for a Bearer token (works without cookies) |
 | `POST` | `/api/auth/guest` | Start a guest session → `{token, user}` |
 | `GET` | `/api/auth/me` | Current user (Bearer token or session cookie) |
 | `POST` | `/api/auth/logout` | Clear the session cookie |
 | `GET` | `/api/linkedin/status` | Current user's LinkedIn connection status |
+| `GET` | `/api/guidelines` | LinkedIn posting guidelines the agent follows (text/image/safety + disclaimer) |
 
 Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and is scoped to the signed-in user.
 
@@ -176,7 +209,7 @@ Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/posts/generate` | Run the agent: `{user_query}` → full post record |
+| `POST` | `/api/posts/generate` | Run the agent: `{user_query, include_image}` → full post record |
 | `POST` | `/api/posts/batch-generate` | Generate N posts from a topic in one call |
 | `GET` | `/api/posts?limit&offset&priority&post_type&status` | List (filtered, owner-scoped) + counts |
 | `GET` | `/api/posts/export?format=json|csv|md` | Download the user's whole library |
@@ -185,6 +218,7 @@ Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and
 | `DELETE` | `/api/posts/{id}` | Delete one record; `DELETE /api/posts` clears all (with filters) |
 | `POST` | `/api/posts/{id}/regenerate` | Re-run generation for the post |
 | `POST` | `/api/posts/{id}/regenerate-image` | Regenerate just the image |
+| `POST` | `/api/posts/{id}/image` | **Upload a manual image** (multipart) — re-encoded, EXIF stripped |
 | `POST` | `/api/posts/{id}/rework` | Rewrite the post to a specified angle |
 | `POST` | `/api/posts/{id}/duplicate` | Create a copy as a new draft |
 | `POST` | `/api/posts/{id}/suggest-edits` | AI copy-editing suggestions for the draft |
@@ -217,9 +251,10 @@ OAuth login, it needs a one-time developer app:
    **"Sign In with LinkedIn using OpenID Connect"** product (scopes `openid`,
    `profile`, `email`) and, to enable publishing, the **"Share on LinkedIn"**
    product (scope `w_member_social`).
-2. Add `http://localhost:8000/api/auth/linkedin/callback` as an **Authorized
-   redirect URL** (or `http://localhost:5173/api/auth/linkedin/callback` behind
-   the Vite proxy).
+2. Add `http://localhost:8001/api/auth/linkedin/callback` as an **Authorized
+   redirect URL** (or `http://localhost:5174/api/auth/linkedin/callback` behind
+   the Vite proxy) — for a tunnel/deployment use the exact public
+   `{FRONTEND_URL}/api/auth/linkedin/callback`.
 3. Set `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_DRY_RUN=false`
    in `.env` and restart — the login screen activates the blue button for every
    visitor.
@@ -228,15 +263,35 @@ OAuth login, it needs a one-time developer app:
    user's** LinkedIn feed (green "connected" dot in the header). Tokens carry
    LinkedIn's `refresh_token` for automatic refresh.
 
-## Validation rules (blocking)
+## LinkedIn guidelines & validation
 
-- Length between 300 and 3000 characters.
-- 5–10 hashtags, `#GenAIWithAM` always first, no repeated tags.
-- No literal section headers (`**`/headings), no fabricated metrics or percentages.
-- Max 12 emojis, no emoji leading a line, no overused clichés ("game-changer", "unlocking the power"…).
-- No stray `Hashtags:` label — a `clean_post` node strips label lines and tag-only lines anywhere, then appends one clean hashtag line.
+The rules the agent follows are the single source of truth in
+`backend/app/prompts/guidelines.py`; the writer, image-prompt and validator
+prompts all receive them, `GET /api/guidelines` serves them, and the app shows
+them (with a "we follow LinkedIn's policies" disclaimer) in the sidebar and the
+mobile menu.
 
-An optional second pass asks the LLM for a **quality score** and subjective suggestions (advisory only — it never blocks).
+**Blocking rules (decided in code, never by the model):**
+
+- Length between 300 and 3000 characters (LinkedIn's limit).
+- 5–10 hashtags, all topic/niche-relevant — **no fixed or personal tags**; Latin/
+  Arabic scripts keep the post's language, CJK falls back to English (LinkedIn
+  cannot index CJK hashtags). `clean_post` removes label/tag-only lines and
+  appends one clean tag line.
+- No literal section headers, no code fences, no stray `Hashtags:` label.
+- Emoji budget: max 12, and never starting a line.
+- No fabricated metrics/percentages, no AI clichés ("game-changer", "delve", …).
+- **No engagement bait** ("like if you agree", "comment YES", "tag a friend",
+  "follow for more", "share this if…") — LinkedIn discourages it.
+
+An optional second pass asks the LLM for a **quality score** and subjective
+suggestions (advisory only — it never blocks).
+
+**Publishing boundary:** LinkedIn renders `shareCommentary.text` as plain text, so
+`to_plain_text()` strips markdown (`**bold**`, `~~strike~~`, `#`/`>`/list markers)
+right before the API call — while the stored post and the CSV/Markdown exports
+keep their markdown. The frontend mirrors this in `utils/linkedin.ts` for the
+"Copy for LinkedIn" button.
 
 ## Google Sheets logging (production)
 
@@ -250,7 +305,7 @@ With `GOOGLE_SHEETS_DRY_RUN=true` (default) every event still lands in `backend/
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # 29 tests, runs offline (mock providers)
+cd backend && .venv/bin/python -m pytest -q     # 61 tests, runs offline (mock providers)
 .venv/bin/ruff check app tests                  # lint (same rule set as CI)
 ```
 
@@ -259,11 +314,34 @@ backend **ruff lint + pytest** and frontend **typecheck + build** (`tsc && vite 
 
 ## Production notes
 
-- The LangGraph checkpointer is **in-memory** (`MemorySaver`): restarting the server loses in-flight
-  approval threads. Swap in `SqliteSaver`/`PostgresSaver` for horizontal deployments.
-- Posts and users are JSON-file stores; swap `PostStore`/`UserStore` for Postgres/Redis for scale.
-- `frontend/vite.config.ts` proxies `/api` to `:8000` by default (`VITE_PROXY_TARGET` to override,
-  e.g. `http://localhost:8001` when 8000 is busy); in production serve the built `frontend/dist`
-  from FastAPI (or via nginx to `/api`).
-- Set `SECRET_KEY` to a long random value in production (it signs session tokens).
-- Never commit `.env`; keep `backend/data/` gitignored (posts, users, audit logs are local state).
+### Security hardening (configurable, safe defaults)
+
+| Setting | Purpose |
+| --- | --- |
+| `SECRET_KEY` | Signs session tokens **and** derives the key that encrypts LinkedIn tokens at rest. Use a long random value; changing it logs everyone out. |
+| `RATE_LIMIT_PER_MINUTE` | Per-IP sliding window across all AI-cost endpoints (`0` disables). |
+| `DAILY_GENERATIONS_PER_USER`, `DAILY_IMAGES_PER_USER` | Per-user daily AI ceilings (`0` = unlimited). |
+| `GLOBAL_DAILY_AI_CALLS` | Whole-app daily ceiling — the last line of defence against runaway spend. |
+| `TRUSTED_PROXIES` | Only these peers may set `X-Forwarded-For`, so clients can't spoof their IP to dodge limits. |
+| `SECURITY_HEADERS` | CSP, X-Frame-Options, nosniff, Referrer-Policy, COOP (+ HSTS in production). |
+| `DOCS_ENABLED` | Serves `/docs`, `/redoc`, `/openapi.json` — set `false` publicly. |
+| `ALLOW_GUEST_LOGIN` | The "continue as guest" demo path — set `false` for public deployments. |
+
+With `ENVIRONMENT=production` the app **refuses to start** if any of these is
+insecure (default secret, `*` origin, non-HTTPS `FRONTEND_URL`, docs/guest enabled,
+no quota set). Secrets are additionally redacted from logs.
+
+### Storage & scaling
+
+- The LangGraph checkpointer is **in-memory** (`MemorySaver`): restarting loses the
+  thread, so approval falls back to publishing from the stored record. Swap in
+  `SqliteSaver`/`PostgresSaver` for horizontal deployments.
+- Posts, users, voice profiles and daily usage are JSON-file stores; swap
+  `PostStore`/`UserStore` for Postgres/Redis for scale.
+- Manually uploaded images live in `backend/data/uploads/` and are served from
+  `/uploads` (proxied through Vite in dev) — put them on object storage for scale.
+- `frontend/vite.config.ts` proxies `/api` and `/uploads` to `:8001`
+  (`VITE_PROXY_TARGET` to override); in production serve `frontend/dist` from
+  FastAPI or nginx and proxy those two paths.
+- Never commit `.env`; keep `backend/data/` gitignored (users, posts, uploads and
+  audit logs are local state).

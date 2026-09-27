@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.agents.graph import LinkedInWorkflow
 from app.agents.nodes import NodeContext
+from app.core.abuse import DailyQuota
 from app.core.config import Settings
 from app.models.post import PostStore
 from app.models.user import UserStore
@@ -33,8 +34,14 @@ class ApplicationContext:
         self.linkedin_publisher = LinkedInPublisher(settings)
         self.sheets_service = GoogleSheetsService(settings, data_dir / "audit.jsonl")
         self.store = PostStore(data_dir)
-        self.user_store = UserStore(data_dir)
+        self.user_store = UserStore(data_dir, secret_key=settings.secret_key)
         self.voice_store = VoiceProfileStore(data_dir)
+        self.quota = DailyQuota(
+            data_dir,
+            per_user_generations=settings.daily_generations_per_user,
+            per_user_images=settings.daily_images_per_user,
+            global_calls=settings.global_daily_ai_calls,
+        )
         self.engagement = EngagementAnalytics(
             self.linkedin_publisher, dry_run=bool(settings.linkedin_dry_run)
         )

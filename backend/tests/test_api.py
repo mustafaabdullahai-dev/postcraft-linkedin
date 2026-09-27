@@ -128,6 +128,53 @@ def test_generate_review_approve_publish_flow(client: TestClient):
     assert rejected.json()["review_status"] == "REJECTED"
 
 
+def test_republish_creates_a_new_linkedin_post(client: TestClient):
+    """A published post must be republishable without saving a revision first.
+
+    Regression: the endpoint short-circuited on `publishing_status == PUBLISHED`
+    and returned 200 without publishing anything, so the "Republish revision"
+    button silently did nothing.
+    """
+    headers = _guest(client)
+
+    rec = client.post(
+        "/api/posts/generate",
+        json={"user_query": "Republish regression"},
+        headers=headers,
+    ).json()
+    rid = rec["record_id"]
+
+    published = client.post(
+        f"/api/posts/{rid}/approve", json={"approved": True}, headers=headers
+    ).json()
+    assert published["record_status"] == "PUBLISHED"
+    first_urn = published["linkedin_post_id"]
+    first_published_at = published["published_at"]
+    assert first_urn
+
+    # No edits, no save: click "Republish revision" straight away.
+    republished = client.post(
+        f"/api/posts/{rid}/publish", json={"approved": True, "revision": True}, headers=headers
+    )
+    assert republished.status_code == 200
+    body = republished.json()
+    assert body["record_status"] == "PUBLISHED"
+    assert body["publishing_status"] == "PUBLISHED"
+    # A brand-new urn, not the previous one.
+    assert body["linkedin_post_id"]
+    assert body["linkedin_post_id"] != first_urn
+    # Re-stamped for the new post rather than inheriting the old publish time.
+    assert body["published_at"] != first_published_at
+
+    # Retry-safety is preserved: a plain retry on a published record is a no-op
+    # and must NOT create a third post.
+    retried = client.post(
+        f"/api/posts/{rid}/publish", json={"approved": True}, headers=headers
+    )
+    assert retried.status_code == 200
+    assert retried.json()["linkedin_post_id"] == body["linkedin_post_id"]
+
+
 def test_owner_isolation(client: TestClient):
     alice = _guest(client, "Alice")
     bob = _guest(client, "Bob")

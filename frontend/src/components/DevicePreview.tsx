@@ -59,8 +59,10 @@ export default function DevicePreview({ device, onChange, children }: Props) {
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div
-          className="flex items-center gap-0.5 rounded-full border p-0.5"
-          style={{ borderColor: "var(--line-2)" }}
+          role="tablist"
+          aria-label="Preview device"
+          className="flex w-fit max-w-full items-center gap-0.5 overflow-x-auto rounded-full p-0.5"
+          style={{ background: "var(--surface-2)" }}
         >
           {DEVICES.map((d) => {
             const active = d.id === device;
@@ -68,15 +70,18 @@ export default function DevicePreview({ device, onChange, children }: Props) {
               <button
                 key={d.id}
                 type="button"
+                role="tab"
+                aria-selected={active}
+                aria-label={d.label}
                 onClick={() => pick(d.id)}
-                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition sm:px-3"
+                className="flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold transition sm:min-h-8"
                 style={{
                   background: active ? "var(--accent-soft)" : "transparent",
                   color: active ? "var(--accent-ink)" : "var(--faint)",
                 }}
               >
-                {ICONS[d.id]}
-                <span className="hidden sm:inline">{d.label}</span>
+                <span aria-hidden="true">{ICONS[d.id]}</span>
+                {d.label}
               </button>
             );
           })}

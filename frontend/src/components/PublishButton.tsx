@@ -10,7 +10,7 @@ export default function PublishButton({ disabled, busy, onClick, label = "Publis
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onClick()}
       disabled={disabled || busy}
       className="btn-primary"
       style={{ background: "var(--t-mint-d)" }}

@@ -16,6 +16,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
+from app.core.crypto import decrypt_secret, encrypt_secret
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -49,12 +51,17 @@ class LinkedInUser(BaseModel):
 
 
 class UserStore:
-    """Thread-safe JSON-file backed repository (data/users.json)."""
+    """Thread-safe JSON-file backed repository (data/users.json).
 
-    def __init__(self, data_dir: str | Path):
+    OAuth tokens are encrypted at rest with a key derived from SECRET_KEY, so
+    the file never contains a usable credential in plaintext.
+    """
+
+    def __init__(self, data_dir: str | Path, secret_key: str = ""):
         self._dir = Path(data_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path = self._dir / "users.json"
+        self._secret = secret_key or ""
         self._lock = threading.RLock()
         self._cache: Dict[str, LinkedInUser] = {}
         self._load()
@@ -69,12 +76,19 @@ class UserStore:
         for item in raw.get("users", []):
             try:
                 user = LinkedInUser.model_validate(item)
+                user.access_token = decrypt_secret(user.access_token, self._secret)
+                user.refresh_token = decrypt_secret(user.refresh_token, self._secret)
                 self._cache[user.user_id] = user
             except Exception:
                 continue
 
     def _flush(self) -> None:
-        payload = {"users": [u.model_dump(mode="json") for u in self._cache.values()]}
+        payload = {"users": []}
+        for u in self._cache.values():
+            item = u.model_dump(mode="json")
+            item["access_token"] = encrypt_secret(item.get("access_token", ""), self._secret)
+            item["refresh_token"] = encrypt_secret(item.get("refresh_token", ""), self._secret)
+            payload["users"].append(item)
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         tmp.replace(self._path)

@@ -45,7 +45,12 @@ export default function GeneratingOverlay() {
             className="absolute inset-1.5 animate-spin rounded-full border-2"
             style={{ borderColor: "transparent", borderBottomColor: "var(--accent-2)", animationDirection: "reverse", animationDuration: "1.6s" }}
           />
-          <span className="text-2xl">✨</span>
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-9 w-9 rounded-xl"
+            aria-hidden="true"
+          />
         </div>
 
         <div>

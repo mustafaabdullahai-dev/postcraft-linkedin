@@ -4,6 +4,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.models.schemas import ValidationOutput
+from app.prompts.guidelines import text_rules_text
 
 VALIDATION_SYSTEM = """You are a strict content quality validator for LinkedIn posts.
 
@@ -40,7 +41,11 @@ LANGUAGE
 quality_score: 0.0-1.0 technical content metric (NOT a ranking of any sensitive
 or political characteristic — purely a content-quality heuristic).
 valid = false if there are blocking issues (fabrication, off-topic, broken format).
-"""
+
+The LinkedIn posting guidelines below are authoritative. Flag any post that
+violates one of them:
+
+""" + text_rules_text()
 
 VALIDATION_HUMAN = """User query:
 {user_query}

@@ -16,6 +16,23 @@ export interface User {
   created_at: string;
 }
 
+export interface GuidelineItem {
+  title: string;
+  detail: string;
+}
+
+export interface GuidelineGroup {
+  id: string;
+  title: string;
+  items: GuidelineItem[];
+}
+
+export interface GuidelinesPayload {
+  disclaimer?: string;
+  groups: GuidelineGroup[];
+  source?: string;
+}
+
 export interface PostRecord {
   record_id: string;
   user_query: string;

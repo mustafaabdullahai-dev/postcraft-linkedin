@@ -106,6 +106,15 @@ export default function LoginScreen({ onAuthed }: Props) {
             {error}
           </p>
         )}
+
+        <p className="text-center text-xs text-[var(--faint)]">
+          Created by{" "}
+          <span className="font-medium text-[var(--ink-soft)]">Abdullah Mustafa</span>
+          <span className="px-1.5 opacity-60" aria-hidden="true">
+            •
+          </span>
+          <span className="font-medium text-[var(--ink-soft)]">GenAI Engineer</span>
+        </p>
       </div>
     </div>
   );

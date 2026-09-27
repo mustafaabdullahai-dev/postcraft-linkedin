@@ -1,6 +1,7 @@
 import { getToken } from "./auth";
 import type {
   FormattingPrefs,
+  GuidelinesPayload,
   HealthInfo,
   PostEditSuggestions,
   PostFilters,
@@ -37,7 +38,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  generate: (userQuery: string, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string) =>
+  generate: (userQuery: string, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string, includeImage = true) =>
     request<PostRecord>("/posts/generate", {
       method: "POST",
       body: JSON.stringify({
@@ -47,10 +48,11 @@ export const api = {
         language,
         formatting,
         voice_profile_id: voiceProfileId ?? undefined,
+        include_image: includeImage,
       }),
     }),
 
-  batchGenerate: (userQuery: string, variations: number, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string) =>
+  batchGenerate: (userQuery: string, variations: number, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string, includeImage = true) =>
     request<{ items: PostRecord[] }>("/posts/batch-generate", {
       method: "POST",
       body: JSON.stringify({
@@ -61,6 +63,7 @@ export const api = {
         language,
         formatting,
         voice_profile_id: voiceProfileId ?? undefined,
+        include_image: includeImage,
       }),
     }),
 
@@ -139,6 +142,30 @@ export const api = {
       body: JSON.stringify(prompt?.trim() ? { prompt: prompt.trim() } : {}),
     }),
 
+  // Manual image: upload a photo from the user's device/gallery.
+  uploadImage: async (id: string, file: File) => {
+    const token = getToken();
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/posts/${id}/image`, {
+      method: "POST",
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    if (!res.ok) {
+      let message = `Upload failed (${res.status})`;
+      try {
+        const body = await res.json();
+        message = body.detail ?? message;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    return (await res.json()) as PostRecord;
+  },
+
   approve: (id: string, approved: boolean, scheduledAt?: string) =>
     request<PostRecord>(`/posts/${id}/approve`, {
       method: "POST",
@@ -148,10 +175,10 @@ export const api = {
       }),
     }),
 
-  publish: (id: string) =>
+  publish: (id: string, revision = false) =>
     request<PostRecord>(`/posts/${id}/publish`, {
       method: "POST",
-      body: JSON.stringify({ approved: true }),
+      body: JSON.stringify({ approved: true, revision: Boolean(revision) }),
     }),
 
   voiceProfiles: {
@@ -196,6 +223,8 @@ export const api = {
   },
 
   health: () => request<HealthInfo>("/health"),
+
+  guidelines: () => request<GuidelinesPayload>("/guidelines"),
 
   me: () => request<User>("/auth/me"),
 };

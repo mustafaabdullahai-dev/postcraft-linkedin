@@ -10,6 +10,34 @@ import structlog
 
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
 
+# Keys whose values must never reach a log sink in cleartext.
+_REDACT_KEYS = {
+    "token",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "secret",
+    "secret_key",
+    "client_secret",
+    "api_key",
+    "apikey",
+    "password",
+    "code",
+    "state",
+}
+
+_REDACTED = "[redacted]"
+
+
+def redact_secrets(logger, method_name, event_dict):
+    """structlog processor: blank out anything that looks like a credential."""
+    for key in list(event_dict.keys()):
+        if key.lower() in _REDACT_KEYS:
+            event_dict[key] = _REDACTED
+    return event_dict
+
 
 class RequestIdFilter(logging.Filter):
     """Attach the current request id to every log record."""
@@ -29,7 +57,7 @@ def _setup_structlog(level: str = "INFO") -> None:
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
-            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+            redact_secrets,
         ],
     )
 
@@ -41,6 +69,7 @@ def _setup_structlog(level: str = "INFO") -> None:
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.stdlib.add_log_level,
+            redact_secrets,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,

@@ -118,7 +118,7 @@ return (
             <span className="truncate">{name}</span>
             <svg viewBox="0 0 16 16" className={m ? "h-3.5 w-3.5 shrink-0 fill-[#2f6fed]" : "h-4 w-4 shrink-0 fill-[#2f6fed]"} aria-label="verified">
               <title>Verified</title>
-              <path d="M8 0l1.6 1.6 2.3-.4 1.2 2 2 1.2-.4 2.3L16 8l-1.6 1.6.4 2.3-2 1.2-1.2 2-2.3-.4L8 16l-1.6-1.6-2.3.4-1.2-2-2-1.2.4-2.3L0 8l1.6-1.6-.4-2.3 2-1.2 1.2-2 2 2.3.4z" />
+              <path d="M8 0l1.6 1.6 2.3-.4 1.2 2 2 1.2-.4 2.3L16 8l-1.6 1.6.4 2.3-2 1.2-1.2 2-2.3-.4L8 16l-1.6-1.6-2.3.4-1.2-2-2-1.2.4-2.3L0 8l1.6-1.6-.4-2.3 2-1.2 1.2-2 3.6-.9z" />
             </svg>
           </div>
           <div className={m ? "truncate text-[13px] text-[var(--muted)]" : "truncate text-sm text-[var(--muted)]"}>{headline}</div>

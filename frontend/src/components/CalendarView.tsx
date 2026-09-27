@@ -3,6 +3,7 @@ import type { PostFilters, PostRecord } from "../types";
 import { api } from "../services/api";
 import { formatLocalTime } from "../utils/format";
 import Skeleton from "./Skeleton";
+import SubTabs from "./SubTabs";
 
 interface Props {
   selectedId: string | null;
@@ -30,6 +31,7 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
   today.setHours(0, 0, 0, 0);
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [day, setDay] = useState<string | null>(null);
+  const [sub, setSub] = useState<"month" | "day">("month");
   const [posts, setPosts] = useState<PostRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -77,7 +79,7 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   return (
-    <div className="card rv space-y-4 p-5">
+    <div className="card card--flat rv space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="label mb-0.5">Calendar</p>
@@ -92,7 +94,7 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-[11px] font-medium" style={{ color: "var(--faint)" }}>
+      <div className="flex flex-wrap items-center gap-3 text-[10px] font-medium" style={{ color: "var(--faint)" }}>
         <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0f8a6d]" /> Published</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#6a4fd1]" /> Scheduled</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#c62b3c]" /> Failed</span>
@@ -100,14 +102,26 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
         {loading && !posts.length && <span className="inline-flex items-center gap-1"><Skeleton className="h-3 w-14" /> syncing…</span>}
       </div>
 
+      <SubTabs
+        ariaLabel="Calendar views"
+        value={sub}
+        onChange={setSub}
+        tabs={[
+          { id: "month", label: "Month", icon: "▦" },
+          { id: "day", label: "Day", icon: "☰", count: dayPosts.length },
+        ]}
+      />
+
+      {sub === "month" ? (
+      <>
       {loading && !posts.length ? (
-        <div className="grid grid-cols-7 gap-1.5 pt-1">
+        <div className="grid grid-cols-7 gap-1 pt-1">
           {Array.from({ length: 35 }).map((_, i) => (
             <Skeleton key={i} className="h-14 rounded-xl" />
           ))}
         </div>
       ) : (
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="grid grid-cols-7 gap-1">
         {WEEKDAYS.map((w) => (
           <div key={w} className="pb-1 text-center text-[11px] font-semibold" style={{ color: "var(--faint)" }}>
             {w}
@@ -124,9 +138,9 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
               key={key}
               role="button"
               tabIndex={0}
-              onClick={() => setDay(isSelected ? null : key)}
-              onKeyDown={(e) => { if (e.key === "Enter") setDay(isSelected ? null : key); }}
-              className={`min-h-[46px] cursor-pointer rounded-lg border p-1.5 transition ${isSelected ? "ring-2" : "hover:bg-[var(--surface-2)] sm:min-h-[66px] lg:min-h-[86px]"}`}
+              onClick={() => { setDay(isSelected ? null : key); if (!isSelected) setSub("day"); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { setDay(isSelected ? null : key); if (!isSelected) setSub("day"); } }}
+              className={`min-h-[44px] cursor-pointer rounded-lg border p-1.5 transition ${isSelected ? "ring-2" : "hover:bg-[var(--surface-2)] sm:min-h-[56px] lg:min-h-[72px]"}`}
               style={{
                 borderColor: isToday ? "var(--accent)" : "var(--line)",
                 background: isSelected ? "var(--accent-soft)" : "var(--surface-1)",
@@ -136,11 +150,11 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
                 <span className={`text-[11px] font-bold sm:text-xs ${isToday ? "text-[var(--accent)]" : ""}`} style={{ color: isToday ? undefined : "var(--muted)" }}>
                   {d}
                 </span>
-                {dayRecs.length > 5 && <span className="text-[10px]" style={{ color: "var(--faint)" }}>+{dayRecs.length}</span>}
+                {dayRecs.length > 6 && <span className="text-[10px]" style={{ color: "var(--faint)" }}>+{dayRecs.length}</span>}
               </div>
-              <div className="mt-1 hidden gap-1 sm:flex sm:flex-col">
-                {dayRecs.slice(0, 5).map((r) => (
-                  <span key={r.record_id} title={r.user_query || r.topic} className={`block h-2 rounded-full ${STATUS_CLASS[r.record_status] ?? "bg-[var(--dead)]"}`} />
+              <div className="mt-1.5 hidden gap-1 sm:flex sm:flex-col">
+                {dayRecs.slice(0, 6).map((r) => (
+                  <span key={r.record_id} title={r.user_query || r.topic} className={`block h-2.5 rounded-full ${STATUS_CLASS[r.record_status] ?? "bg-[var(--dead)]"}`} />
                 ))}
               </div>
             </div>
@@ -148,7 +162,8 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
         })}
       </div>
       )}
-
+      </>
+      ) : (
       <div className="space-y-2">
         <p className="label">{day ? `Posts on ${day}` : "Pick a day to see its posts"}</p>
         {dayPosts.length === 0 ? (
@@ -178,6 +193,7 @@ export default function CalendarView({ selectedId, onSelect, onToast }: Props) {
           </ul>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -31,6 +31,30 @@ export async function me(): Promise<User | null> {
   return res.json();
 }
 
+// After "Sign in with LinkedIn" the backend redirects back with a short-lived
+// one-time `code`. Exchange it for a Bearer token (like guests use) so the
+// session works even on browsers that drop cookies during cross-site redirects.
+export async function exchangeAuthCode(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return;
+  try {
+    const res = await fetch(`/api/auth/session?code=${encodeURIComponent(code)}`, {
+      credentials: "include",
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { token?: string };
+      if (body?.token) setToken(body.token, true);
+    }
+  } catch {
+    /* fall back to the cookie if anything goes wrong */
+  } finally {
+    // Drop the one-time code from the URL so it can't be replayed or shared.
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+}
+
 export async function guestLogin(name = "", remember = true): Promise<User | null> {
   const res = await fetch("/api/auth/guest", {
     method: "POST",

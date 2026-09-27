@@ -5,6 +5,7 @@ import FormattingControls from "./FormattingControls";
 import GenerationProgress from "./GenerationProgress";
 import LanguageSelect from "./LanguageSelect";
 import QueryInput from "./QueryInput";
+import SubTabs from "./SubTabs";
 import VoicePicker from "./VoicePicker";
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   setLanguage: (l: string) => void;
   formatting: FormattingPrefs;
   setFormatting: (f: FormattingPrefs) => void;
+  includeImage: boolean;
+  setIncludeImage: (v: boolean) => void;
   generating: boolean;
   error: string | null;
   onGenerate: (topic?: string) => void;
@@ -39,6 +42,8 @@ export default function PostGenerator({
   setLanguage,
   formatting,
   setFormatting,
+  includeImage,
+  setIncludeImage,
   generating,
   error,
   onGenerate,
@@ -50,7 +55,6 @@ export default function PostGenerator({
   onToast,
 }: Props) {
   const [elapsed, setElapsed] = useState(0);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -66,38 +70,102 @@ export default function PostGenerator({
     };
   }, [generating]);
 
+  const [sub, setSub] = useState<"topic" | "voice" | "style">("topic");
+
   return (
-    <div className="card rv space-y-5 p-6">
-      <div className="space-y-1.5">
-        <p className="label">Create</p>
-        <h2 className="text-xl font-bold text-[var(--ink)]">Say it once, AI sharpens it.</h2>
-        <p className="hint">
-          Type a raw topic — the assistant rewrites it live. Then it drafts, validates quality, and generates an image
-          you review before publishing.
-        </p>
+    <div className="card card--flat rv flex min-h-full flex-col gap-3 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="label">Create</p>
+          <h2 className="text-lg font-bold text-[var(--ink)]">Say it once, AI sharpens it.</h2>
+          <p className="hint">
+            Type a raw topic — the assistant rewrites it live. Then it drafts, validates quality, and generates an image
+            you review before publishing.
+          </p>
+        </div>
+        {!generating && (
+          <div className="hidden shrink-0 lg:block">
+            <button
+              type="button"
+              onClick={() => onGenerate()}
+              disabled={!query.trim()}
+              className="btn-primary !bg-[#0A66C2] px-6 !text-white transition hover:!bg-[#0855a6]"
+            >
+              ✦ Generate post
+            </button>
+          </div>
+        )}
       </div>
-      <QueryInput
-        value={query}
-        onChange={setQuery}
-        onSubmit={generating ? undefined : onGenerate}
-        placeholder="e.g. Why agentic AI is reshaping software teams"
-        autoFocus
+      <SubTabs
+        ariaLabel="Create sections"
+        value={sub}
+        onChange={setSub}
+        tabs={[
+          { id: "topic", label: "Topic", icon: "✎" },
+          { id: "voice", label: "Voice", icon: "◍" },
+          { id: "style", label: "Style", icon: "≡" },
+        ]}
       />
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="hint mr-1">Try:</span>
-        {SUGGESTED_TOPICS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            disabled={generating}
-            onClick={() => onGenerate(t)}
-            className="chip-unselected !px-2 !py-1 disabled:opacity-50"
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <LanguageSelect value={language} onChange={setLanguage} />
+
+      {sub === "topic" ? (
+        <>
+          <QueryInput
+            value={query}
+            onChange={setQuery}
+            onSubmit={generating ? undefined : onGenerate}
+            placeholder="e.g. Why agentic AI is reshaping software teams"
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="hint mr-1">Try:</span>
+            {SUGGESTED_TOPICS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                disabled={generating}
+                onClick={() => onGenerate(t)}
+                className="chip-unselected !px-2 !py-1 disabled:opacity-50"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <LanguageSelect value={language} onChange={setLanguage} />
+
+          <div>
+            <span className="label !mb-1">Output</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { v: true, icon: "🖼", label: "Text + image", hint: "Post with a visual" },
+                  { v: false, icon: "✎", label: "Text only", hint: "Faster, no image" },
+                ] as Array<{ v: boolean; icon: string; label: string; hint: string }>
+              ).map((o) => {
+                const active = includeImage === o.v;
+                return (
+                  <button
+                    key={String(o.v)}
+                    type="button"
+                    onClick={() => setIncludeImage(o.v)}
+                    disabled={generating}
+                    aria-pressed={active}
+                    className="flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition disabled:opacity-50"
+                    style={{
+                      borderColor: active ? "var(--accent)" : "var(--line)",
+                      background: active ? "var(--accent-soft)" : "var(--surface)",
+                      color: active ? "var(--accent-ink)" : "var(--ink-soft)",
+                    }}
+                  >
+                    <span className="text-xs font-semibold">
+                      <span aria-hidden="true">{o.icon}</span> {o.label}
+                    </span>
+                    <span className="text-[10px] opacity-80">{o.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : sub === "voice" ? (
       <div className="space-y-3">
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -130,38 +198,26 @@ export default function PostGenerator({
           )}
         </div>
       </div>
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((s) => !s)}
-          aria-expanded={showAdvanced}
-          className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-xs font-semibold transition"
-          style={{ borderColor: "var(--line-2)", color: showAdvanced ? "var(--accent)" : "var(--muted)" }}
-        >
-          <span>Style &amp; size — for expert touches</span>
-          <svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4 fill-current transition-transform"
-            style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0deg)" }}
-            aria-hidden="true"
-          >
-            <path d="M12 15.5 4.5 8l1.4-1.4L12 12.7l6.1-6.1L19.5 8z" />
-          </svg>
-        </button>
-        {showAdvanced && (
-          <div className="toast-in mt-3">
-            <FormattingControls value={formatting} onChange={setFormatting} />
-          </div>
-        )}
-      </div>
+      ) : (
+        <div className="toast-in">
+          <FormattingControls value={formatting} onChange={setFormatting} />
+        </div>
+      )}
+      <ErrorAlert message={error} />
       {generating ? (
         <GenerationProgress elapsed={elapsed} />
       ) : (
-        <button type="button" onClick={() => onGenerate()} disabled={!query.trim()} className="btn-primary w-full py-3.5 text-[15px]">
-          ✦ Generate post
-        </button>
+        <div className="mt-auto lg:hidden">
+          <button
+            type="button"
+            onClick={() => onGenerate()}
+            disabled={!query.trim()}
+            className="btn-primary w-full !bg-[#0A66C2] py-3.5 text-[15px] !text-white transition hover:!bg-[#0855a6]"
+          >
+            ✦ Generate post
+          </button>
+        </div>
       )}
-      <ErrorAlert message={error} />
     </div>
   );
 }

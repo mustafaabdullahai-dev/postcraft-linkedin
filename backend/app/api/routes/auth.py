@@ -12,12 +12,20 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from app.core.auth import MAX_AGE, SESSION_COOKIE, create_session_token, get_current_user
+from app.core.auth import (
+    MAX_AGE,
+    SESSION_COOKIE,
+    create_exchange_code,
+    create_session_token,
+    get_current_user,
+    verify_exchange_code,
+)
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.user import LinkedInUser, UserStore
@@ -161,17 +169,38 @@ async def linkedin_callback(
 
     token = create_session_token(user.user_id)
     logger.info("user logged in via linkedin", user_id=user.user_id, remember=remember)
-    frontend = get_settings().frontend_url
-    response = RedirectResponse(url=f"{frontend.rstrip('/')}/?auth=linkedin")
+    settings = get_settings()
+    frontend = settings.frontend_url.rstrip("/")
+    # Cookies are unreliable through the cross-site OAuth redirect on some
+    # mobile and in-app browsers, so also hand the SPA a short-lived one-time
+    # code it exchanges for a Bearer token (the guest mechanism). The cookie is
+    # kept as a convenience for same-origin desktop browsers.
+    code = create_exchange_code(user.user_id)
+    response = RedirectResponse(url=f"{frontend}/?auth=linkedin&code={quote(code)}")
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=MAX_AGE if remember else None,
         httponly=True,
-        secure=get_settings().is_production,
+        secure=settings.is_production or frontend.lower().startswith("https://"),
         samesite="lax",
+        path="/",
     )
     return response
+
+
+@router.get("/session")
+def session_from_code(request: Request, code: str = Query(default="")):
+    """Exchange the one-time OAuth code for a Bearer session token."""
+    user_id = verify_exchange_code(code)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="This sign-in link expired — please try again.")
+    user = users(request).get(user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+    token = create_session_token(user.user_id)
+    logger.info("session token issued from oauth code", user_id=user.user_id)
+    return JSONResponse(content={"token": token, "user": _public_user(user)})
 
 
 class GuestRequest(BaseModel):
@@ -189,6 +218,8 @@ def _guest(request: Request, body: Optional[GuestRequest] = None) -> JSONRespons
 
 @router.post("/guest")
 async def guest_login_route(body: GuestRequest, request: Request):
+    if not get_settings().allow_guest_login:
+        raise HTTPException(status_code=403, detail="Guest access is disabled.")
     return _guest(request, body)
 
 

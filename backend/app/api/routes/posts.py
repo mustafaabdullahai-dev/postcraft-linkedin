@@ -6,9 +6,10 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
+from app.core.abuse import ai_quota
 from app.core.auth import get_current_user
 from app.core.context import ApplicationContext
 from app.core.logging import get_logger
@@ -152,6 +153,7 @@ def _base_seed(app_ctx, req) -> dict:
         seed["post_type"] = req.post_type
     seed["language"] = (req.language or "English").strip() or "English"
     seed["formatting"] = req.formatting.model_dump()
+    seed["include_image"] = bool(req.include_image)
     if req.voice_profile_id:
         seed.update(_voice_seed(app_ctx, req.voice_profile_id, seed["formatting"]))
     return seed
@@ -162,7 +164,7 @@ def _base_seed(app_ctx, req) -> dict:
 async def suggest_query(
     req: SuggestRequest,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> SuggestResponse:
     """Rewrite the user's topic into a sharper question (live composer assist)."""
     app_ctx = ctx(request)
@@ -195,7 +197,7 @@ async def suggest_query(
 async def suggest_edits(
     record_id: str,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> PostEditSuggestions:
     """LLM editing suggestions for a generated post: notes + an improved draft."""
     app_ctx = ctx(request)
@@ -230,7 +232,7 @@ async def suggest_edits(
 async def generate_post(
     req: GenerateRequest,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> PostRecord:
     app_ctx = ctx(request)
     record = PostRecord(user_query=req.user_query, owner_id=user.user_id)
@@ -261,7 +263,7 @@ async def generate_post(
 async def batch_generate(
     req: GenerateRequest,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> dict:
     """Generate 2-3 distinct drafts for the same topic; the user picks their
     favourite. Each draft is its own post record so it stays fully editable."""
@@ -304,7 +306,7 @@ async def rework_post_route(
     record_id: str,
     req: ReworkRequest,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> PostRecord:
     """Apply the edit-suggestions draft + formatting toggles: rewrite, fresh
     hashtags, re-validation. Keeps the existing image."""
@@ -660,7 +662,7 @@ async def regenerate_post(
     record_id: str,
     req: RegenerateRequest,
     request: Request,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("generation")),
 ) -> PostRecord:
     from app.agents.nodes.content_nodes import (
         analyze_topic,
@@ -714,7 +716,7 @@ async def regenerate_image(
     record_id: str,
     request: Request,
     body: Optional[RegenerateImageRequest] = None,
-    user: LinkedInUser = Depends(get_current_user),
+    user: LinkedInUser = Depends(ai_quota("image")),
 ) -> PostRecord:
     from app.agents.nodes.content_nodes import generate_image, regenerate_image_prompt
 
@@ -746,6 +748,62 @@ async def regenerate_image(
         rec.error = f"Image regeneration failed: {exc}"
         _flush(rec, request)
         raise HTTPException(status_code=502, detail=f"Image regeneration failed: {exc}")
+
+
+# ─── manual image upload (user picks a photo from their gallery) ──
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+@router.post("/{record_id}/image")
+async def upload_image(
+    record_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    user: LinkedInUser = Depends(get_current_user),
+) -> PostRecord:
+    """Attach a user-supplied image to this post.
+
+    The upload is re-encoded (EXIF orientation applied, resized, metadata
+    stripped) so phone photos do not leak GPS data and stay a sane size.
+    No AI call is made, so no quota is charged.
+    """
+    app_ctx = ctx(request)
+    rec = _require_owner(app_ctx.store.get(record_id), user.user_id)
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image is too large (max 8 MB).")
+
+    try:
+        from PIL import Image, ImageOps
+
+        img = Image.open(io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.thumbnail((1600, 1600))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=88, optimize=True)
+        data = buf.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("image upload rejected", record_id=record_id, error=str(exc))
+        raise HTTPException(status_code=400, detail="That file isn't a readable image.") from exc
+
+    uploads = app_ctx.data_dir / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    name = f"{record_id}-{_atomic()}.jpg"
+    (uploads / name).write_bytes(data)
+
+    rec.image_url = f"/uploads/{name}"
+    rec.image_provider = "upload"
+    rec.image_prompt = ""
+    rec.touch("IMAGE_UPLOADED")
+    logger.info("manual image attached", record_id=record_id, bytes=len(data))
+    return _flush(rec, request)
 
 
 # ─── approve (human in the loop) ──────────────────────────────
@@ -782,15 +840,28 @@ async def approve_post(
         return _flush(rec, request)
 
     try:
-        state = await app_ctx.workflow.approve_and_publish(
-            record_id,
-            approved=True,
-            resume_update={
-                "edited_post": rec.final_post or rec.generated_post,
-                "hashtags": rec.hashtags,
-                "user_approved": True,
-            },
-        )
+        # The workflow's default checkpointer is in-memory, so a server restart
+        # drops the thread. Resuming an empty graph raises KeyError('user_query')
+        # from the nodes; fall back to publishing straight from the stored
+        # record (same path /publish uses) so approval keeps working after a
+        # restart/redeploy.
+        if await app_ctx.workflow.has_state(record_id):
+            state = await app_ctx.workflow.approve_and_publish(
+                record_id,
+                approved=True,
+                resume_update={
+                    "edited_post": rec.final_post or rec.generated_post,
+                    "hashtags": rec.hashtags,
+                    "user_approved": True,
+                },
+            )
+        else:
+            logger.warning(
+                "approval: workflow checkpoint unavailable (restart?); "
+                "publishing directly from the stored record",
+                record_id=record_id,
+            )
+            state = await app_ctx.workflow.retry_publish(_state_from_record(rec), user=user)
         _apply_publish(rec, state)
         rec.final_post = rec.final_post or state.get("edited_post") or rec.generated_post
         _mark_published(app_ctx, rec)
@@ -825,9 +896,19 @@ async def publish_post(
             detail="Post must be manually approved before publishing.",
         )
 
-    if rec.publishing_status == "PUBLISHED":
+    if rec.publishing_status == "PUBLISHED" and not req.revision:
+        # Retry-safe no-op: already live on LinkedIn and nothing new to send.
         _mark_published(app_ctx, rec)
         return _flush(rec, request)
+
+    if req.revision:
+        # LinkedIn cannot edit a live ugcPost, so a revision goes out as a new
+        # post. Clear the previous urn and stamps so the new post gets its own
+        # published_at and engagement baseline instead of inheriting the old one.
+        rec.linkedin_post_id = None
+        rec.published_at = None
+        rec.analytics = {}
+    rec.publishing_status = "INITIALIZED"
 
     state = await app_ctx.workflow.retry_publish(_state_from_record(rec), user=user)
     _apply_publish(rec, state)

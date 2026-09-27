@@ -138,7 +138,7 @@ body::before {
   @apply rounded-2xl border;
   background: var(--surface);
   border-color: var(--line);
-  box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--logo-ring), 0 1px 2px rgba(10, 16, 32, 0.06), 0 8px 24px -16px rgba(10, 16, 32, 0.22);
+  box-shadow: 0 1px 2px rgba(10, 16, 32, 0.06), 0 8px 24px -16px rgba(10, 16, 32, 0.22);
 }
 
 .label {
@@ -160,6 +160,11 @@ body::before {
 
 /* semantic helpers used across the app (theme-aware) */
 .u-bg { background: var(--surface); }
+.card--flat {
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(10, 16, 32, 0.06), 0 8px 24px -16px rgba(10, 16, 32, 0.22);
+}
+
 .u-bg-2 { background: var(--bg); }
 .u-tint { background: var(--surface-2); }
 .u-accent-soft { background: var(--accent-soft); }
@@ -199,11 +204,10 @@ body::before {
 .btn-secondary:hover { background: var(--surface-2); border-color: var(--line-strong); }
 
 .btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl border bg-transparent px-4 py-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
-  border-color: var(--line-strong);
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-transparent px-4 py-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
   color: var(--ink);
 }
-.btn-ghost:hover { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-ink); }
+.btn-ghost:hover { background: var(--btn-bg); color: var(--btn-ink); }
 
 .btn-danger {
   @apply inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
@@ -253,12 +257,12 @@ body::before {
 
 /* ─── selection list (hashtags) ──────────────────────────── */
 .chip-selected {
-  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition;
+  @apply inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition sm:min-h-0;
   background: var(--t-sky);
   color: var(--t-sky-d);
 }
 .chip-unselected {
-  @apply inline-flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition;
+  @apply inline-flex min-h-9 items-center gap-1.5 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition sm:min-h-0;
   border-color: var(--line-strong);
   color: var(--faint);
 }
@@ -274,10 +278,8 @@ body::before {
 
 /* ─── structured section cards (organized workspace) ─────── */
 .section-card {
-  @apply rounded-2xl border p-4 sm:p-5;
+  @apply rounded-2xl p-4 sm:p-5;
   background: var(--surface);
-  border-color: var(--line);
-  box-shadow: 0 0 0 1px var(--bg), 0 0 0 2px var(--logo-ring);
 }
 .section-head {
   @apply mb-3 flex items-center gap-2.5;
@@ -358,7 +360,7 @@ body::before {
 }
 
 .section-emphasis {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
 }
 .section-emphasis .section-step {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -399,6 +401,25 @@ select.select {
   min-height: 44px;
 }
 
+/* Instant tap response: drop the 300ms mobile tap delay / double-tap zoom, and
+   give every control immediate pressed feedback. */button,
+a,
+label,
+select,
+input,
+textarea,
+[role="button"],
+[role="tab"],
+[role="radio"] {
+  touch-action: manipulation;
+}
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled),
+[role="tab"]:active:not(:disabled),
+[role="radio"]:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -425,3 +446,102 @@ select.select {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ─── sidebar ────────────────────────────────────────────────── */
+.side-nav {
+  @apply rounded-2xl border p-2.5;
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(10, 16, 32, 0.05), 0 14px 30px -22px rgba(10, 16, 32, 0.3);
+}
+
+.side-eyebrow {
+  @apply px-2.5 pb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.16em];
+  color: var(--dead);
+}
+
+.side-group + .side-group {
+  @apply mt-2.5 border-t pt-2.5;
+  border-color: var(--line);
+}
+
+.side-foot {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 0.625rem;
+}
+
+.side-item {
+  @apply flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all;
+  color: var(--ink-soft);
+}
+.side-item:hover { background: var(--surface-2); color: var(--ink); }
+.side-item:active { transform: translateY(0.5px); }
+.side-item:is([aria-current="page"], [aria-current="location"]) {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--btn-ink);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.side-item__icon {
+  @apply w-[18px] shrink-0 pt-px text-center text-[13px];
+  opacity: 0.75;
+}
+.side-item:hover .side-item__icon { opacity: 1; }
+.side-item:is([aria-current="page"], [aria-current="location"]) .side-item__icon { opacity: 1; }
+
+.side-item__label { @apply text-[13px] font-semibold leading-tight; }
+.side-item__hint {
+  @apply mt-0.5 block text-[10px] font-normal leading-tight;
+  color: var(--faint);
+}
+.side-item:is([aria-current="page"], [aria-current="location"]) .side-item__hint { color: var(--btn-ink); opacity: 0.78; }
+
+.side-count {
+  @apply ml-auto shrink-0 rounded-full px-1.5 text-[10px] font-semibold leading-[16px];
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.side-item:is([aria-current="page"], [aria-current="location"]) .side-count { background: rgba(0, 0, 0, 0.18); color: var(--btn-ink); }
+
+.side-account {
+  @apply -mx-2.5 -mb-[11px] flex w-[calc(100%+1.25rem)] items-center gap-2.5 rounded-b-2xl border-x-0 border-b-0 px-2.5 py-2.5 transition;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.side-account:hover { background: var(--surface); }
+.side-account:hover { border-color: var(--line-strong); }
+.side-account__name { @apply min-w-0 flex-1 truncate text-[12px] font-semibold; color: var(--ink); }
+.side-account__out {
+  @apply flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md transition min-h-9 min-w-9 lg:min-h-0 lg:min-w-0;
+  color: var(--faint);
+}
+.side-account__out:hover { background: var(--bad-soft); color: var(--bad); }
+
+.side-theme {
+  @apply flex shrink-0 items-center gap-0.5 rounded-full p-0.5;
+}
+.side-theme__btn {
+  @apply flex h-[18px] w-[18px] items-center justify-center rounded-full transition min-h-8 min-w-8 lg:min-h-0 lg:min-w-0;
+  color: var(--faint);
+}
+.side-theme__btn:hover { background: var(--line); color: var(--ink); }
+.side-theme__btn[aria-checked="true"] {
+  background: var(--accent);
+  color: var(--btn-ink);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.side-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.side-scroll::-webkit-scrollbar { width: 6px; }
+.side-scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; }
+.side-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Short desktop viewports: drop secondary helper text so the Create form fits
+   without scrolling. All primary controls stay visible. */
+@media (min-width: 1024px) and (max-height: 700px) {
+  .compact-hide { display: none; }
+}

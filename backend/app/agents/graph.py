@@ -90,6 +90,19 @@ class LinkedInWorkflow:
     def _config(self, record_id: str) -> Dict[str, Any]:
         return {"configurable": {"thread_id": record_id}}
 
+    async def has_state(self, record_id: str) -> bool:
+        """True if this record still has a checkpoint.
+
+        The default checkpointer is in-memory, so a process restart drops every
+        thread. Callers use this to fall back to rebuilding state from the
+        stored PostRecord instead of resuming an empty graph.
+        """
+        try:
+            snapshot = await self.graph.aget_state(self._config(record_id))
+        except Exception:  # noqa: BLE001
+            return False
+        return bool(getattr(snapshot, "values", None))
+
     async def run_generation(
         self,
         user_query: str,

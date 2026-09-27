@@ -168,6 +168,8 @@ class SuggestResponse(BaseModel):
 class GenerateRequest(BaseModel):
     user_query: str = Field(min_length=3, max_length=1000)
     regenerate_image: bool = False
+    # False = text-only post: skip the image-prompt LLM call and the render.
+    include_image: bool = True
     priority: Optional[str] = None
     post_type: Optional[str] = None
     # Language for the post text AND for any text shown in the generated image.
@@ -202,6 +204,10 @@ class ApprovalRequest(BaseModel):
 
 class PublishRequest(BaseModel):
     approved: bool = True
+    # Explicit "republish" intent. LinkedIn cannot edit a live ugcPost, so a
+    # revision is published as a brand-new post. Without this flag the endpoint
+    # stays retry-safe and no-ops when the record is already published.
+    revision: bool = False
 
 
 class RegenerateRequest(BaseModel):

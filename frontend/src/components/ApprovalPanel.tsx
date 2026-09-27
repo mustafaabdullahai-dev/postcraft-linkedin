@@ -88,7 +88,7 @@ export default function ApprovalPanel({
             Changed your mind? Publish now, or cancel the schedule and come back later.
           </span>
           <span className="flex-1" />
-          <button type="button" onClick={onPublish} disabled={busy} className="btn-primary">
+          <button type="button" onClick={() => onPublish()} disabled={busy} className="btn-primary">
             Publish now instead
           </button>
           <button
@@ -131,8 +131,8 @@ export default function ApprovalPanel({
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="text-sm font-medium" style={{ color: "var(--muted)" }}>
                 Human review required:
               </span>
@@ -140,29 +140,55 @@ export default function ApprovalPanel({
                 publish now, schedule a time, or reject.
               </span>
             </div>
-            <span className="flex-1" />
-            {!rejected && (
-              <button type="button" onClick={() => onApprove()} disabled={busy} className="btn-primary">
-                ✓ Approve &amp; Publish
-              </button>
-            )}
-            {!rejected && (
+            <span className="hidden flex-1 sm:block" />
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-3">
+              {!rejected && (
+                <button
+                  type="button"
+                  onClick={() => onApprove()}
+                  disabled={busy}
+                  className="btn-primary col-span-2 w-full sm:col-span-1 sm:w-auto"
+                >
+                  ✓ Approve &amp; Publish
+                </button>
+              )}
+              {!rejected && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleOpen((s) => !s);
+                    setScheduleAt(localInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
+                  }}
+                  disabled={busy}
+                  className="btn-secondary w-full !px-3 sm:w-auto"
+                  aria-label="Schedule"
+                  title="Schedule"
+                  aria-expanded={scheduleOpen}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6.2" />
+                    <path d="M8 4.6V8l2.4 1.4" />
+                  </svg>
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  setScheduleOpen((s) => !s);
-                  setScheduleAt(localInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
-                }}
+                onClick={onReject}
                 disabled={busy}
-                className="btn-secondary"
-                aria-expanded={scheduleOpen}
+                className={`btn-danger w-full sm:w-auto ${rejected ? "col-span-2 sm:col-span-1" : ""}`}
               >
-                ⏰ Schedule
+                ✕ Reject
               </button>
-            )}
-            <button type="button" onClick={onReject} disabled={busy} className="btn-danger">
-              ✕ Reject
-            </button>
+            </div>
           </div>
 
           {scheduleOpen && !rejected && (

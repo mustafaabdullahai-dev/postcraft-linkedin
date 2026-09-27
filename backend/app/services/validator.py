@@ -41,6 +41,15 @@ METRIC_RE = re.compile(r"\b(?:\d+(?:\.\d+)?\s*(?:%|percent|x|×)\b|\$\d[\dk+]*|\
 HASHTAG_RE = re.compile(r"#[A-Za-z0-9_]+")
 LINE_BEGIN_EMOJI_RE = re.compile(r"^\s*[\U0001F000-\U0001FAFF\u2600-\u27BF]")
 
+# LinkedIn discourages engagement bait; flag the common phrasings.
+ENGAGEMENT_BAIT = [
+    re.compile(r"\b(?:like|smash like|hit like)\b[^.\n]{0,20}\bif you\b", re.IGNORECASE),
+    re.compile(r"\bcomment\s+[\"“']?(?:yes|agree|done|1)\b", re.IGNORECASE),
+    re.compile(r"\btag\s+(?:a|your|two|three)\s+(?:friend|colleague|colleagues|people)", re.IGNORECASE),
+    re.compile(r"\bfollow\s+(?:me\s+)?for\s+(?:more|follow)", re.IGNORECASE),
+    re.compile(r"\b(?:share|repost)\s+this\s+(?:if|to)\b", re.IGNORECASE),
+]
+
 
 class ValidationRules:
     def __init__(self, post: str, hashtags: List[str]):
@@ -76,6 +85,11 @@ class ValidationRules:
         for c in CLICHES:
             if c in low:
                 issues.append(f"AI cliché: '{c}'")
+
+        for bait in ENGAGEMENT_BAIT:
+            if bait.search(low):
+                issues.append("Engagement bait detected (LinkedIn discourages it)")
+                break
 
         # ── hashtags
         tags = self.hashtags

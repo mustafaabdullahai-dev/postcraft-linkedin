@@ -29,7 +29,7 @@ export default function LanguageSelect({ value, onChange }: Props) {
   const shown = isTab(value) ? "" : value;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <p className="label">Language</p>
 
       <div className="flex flex-wrap gap-1.5">
@@ -73,7 +73,7 @@ export default function LanguageSelect({ value, onChange }: Props) {
               }
               if (e.key === "Escape") setOpen(false);
             }}
-            className="input h-10 pr-20 font-medium"
+            className="input h-9 pr-20 font-medium"
           />
           <svg
             viewBox="0 0 24 24"
@@ -147,7 +147,7 @@ export default function LanguageSelect({ value, onChange }: Props) {
           </div>
         )}
       </div>
-      <p className="hint">Applies to the post text and to any words shown in the generated image.</p>
+      <p className="hint compact-hide">Applies to the post text and to any words shown in the generated image.</p>
     </div>
   );
 }

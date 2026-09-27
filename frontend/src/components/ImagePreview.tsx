@@ -1,22 +1,89 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface Props {
   url: string;
   prompt: string;
   busy?: boolean;
   onRegenerate?: (prompt?: string) => void;
+  onUpload?: (file: File) => void;
 }
 
-export default function ImagePreview({ url, prompt, busy, onRegenerate }: Props) {
+export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload }: Props) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const isSvg = url.startsWith("data:image/svg") || url.endsWith(".svg");
+
+  const pickFile = (files: FileList | null) => {
+    const file = files?.[0];
+    if (file) onUpload?.(file);
+  };
+
+  const uploadInput = onUpload ? (
+    <input
+      ref={fileRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(e) => {
+        pickFile(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  ) : null;
+
+  const uploadButton = onUpload ? (
+    <>
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        className="btn-secondary px-3 py-1 text-xs"
+        title="Upload a photo from your device"
+      >
+        ⬆ Upload image
+      </button>
+      {uploadInput}
+    </>
+  ) : null;
 
   const applyCustom = () => {
     if (!customPrompt.trim() || busy) return;
     onRegenerate?.(customPrompt.trim());
   };
+
+  if (!url) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-4 py-8 text-center"
+        style={{ borderColor: "var(--line-strong)", background: "var(--surface-2)" }}
+      >
+        <span className="text-2xl" aria-hidden="true">
+          ✎
+        </span>
+        <p className="text-xs font-semibold" style={{ color: "var(--ink-soft)" }}>
+          Text-only post — no image attached
+        </p>
+        <p className="text-[10px]" style={{ color: "var(--faint)" }}>
+          This will publish to LinkedIn as text.
+        </p>
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={() => onRegenerate()}
+            disabled={busy}
+            className="btn-secondary mt-2 px-3 py-1 text-xs"
+          >
+            {busy ? "Generating…" : "🖼 Add an image"}
+          </button>
+        )}
+        {uploadButton && (
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">{uploadButton}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -41,7 +108,7 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate }: Props)
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs" style={{ color: "var(--faint)" }}>
         <span>click image to expand</span>
         {onRegenerate && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => onRegenerate()}
@@ -54,11 +121,11 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate }: Props)
             <button
               type="button"
               onClick={() => setCustom((v) => !v)}
-              className="rounded-lg border border-[var(--line)] px-3 py-1 text-xs transition hover:border-[var(--line-strong)]"
-              style={{ color: "var(--muted)" }}
+              className="btn-secondary px-3 py-1 text-xs"
             >
               {custom ? "Cancel" : "✎ My own prompt"}
             </button>
+            {uploadButton}
           </div>
         )}
       </div>

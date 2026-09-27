@@ -11,9 +11,9 @@ venv/
 .coverage
 htmlcov/
 
-# Runtime data
-backend/data/*.json
-backend/data/*.jsonl
+# Runtime data — user records, posts, uploads, audit logs, usage counters.
+# Never commit: contains PII and (encrypted) OAuth tokens.
+backend/data/
 
 # Frontend
 node_modules/
@@ -25,3 +25,5 @@ dist/
 .idea/
 .vscode/
 *.log
+# TS incremental build cache
+*.tsbuildinfo

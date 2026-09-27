@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import string
 from abc import ABC, abstractmethod
@@ -15,6 +16,12 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+# A provider that emits unusable structured output is retried before giving up:
+# the failure is a per-request coin flip, not a bad prompt or schema.
+STRUCTURED_ATTEMPTS = 3
+STRUCTURED_RETRY_BACKOFF_S = 0.6
+_JSON_DELIMITERS = ",}]:"
 
 
 class _SafeFormatter(string.Formatter):
@@ -32,6 +39,95 @@ def _fill(template: str, variables: Dict[str, Any]) -> str:
     if not variables or "{" not in template:
         return template
     return _SafeFormatter().format(template, **variables)
+
+
+def repair_unescaped_quotes(raw: str) -> Optional[str]:
+    """Re-escape straight double quotes a provider emitted bare inside a JSON
+    string value, returning valid JSON or None if it cannot be repaired.
+
+    DeepSeek sometimes copies quotes out of the source post into tool-call
+    arguments without escaping them:
+
+        {"notes": ["... 'Most "our RAG is broken" tickets' ..."]}
+
+    The early-closing quote truncates the string, so the whole payload fails to
+    parse and the call is discarded. A quote can only legitimately close a
+    string when the next meaningful character is a JSON delimiter (`,` `}` `]`
+    `:`); anything else means the quote was part of the text.
+    """
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        json.loads(raw)
+        return None  # already valid — nothing to repair
+    except ValueError:
+        pass
+
+    out: List[str] = []
+    in_string = False
+    escaped = False
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        if not in_string:
+            if ch == '"':
+                in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if escaped:
+            out.append(ch)
+            escaped = False
+            i += 1
+            continue
+        if ch == "\\":
+            out.append(ch)
+            escaped = True
+            i += 1
+            continue
+        if ch == '"':
+            j = i + 1
+            while j < len(raw) and raw[j] in " \t\r\n":
+                j += 1
+            if j < len(raw) and raw[j] in _JSON_DELIMITERS:
+                in_string = False
+                out.append(ch)
+            else:
+                out.append('\\"')
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+
+    candidate = "".join(out)
+    try:
+        json.loads(candidate)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _recover_structured(raw: Any, schema: Type[T]) -> Optional[T]:
+    """Salvage a tool call the provider emitted with unparseable arguments.
+
+    Returns None when nothing usable can be recovered, so the caller retries.
+    The repaired payload is validated against `schema`, so a wrong guess can
+    never leak into the app — it either validates or is discarded.
+    """
+    if raw is None:
+        return None
+    for call in getattr(raw, "invalid_tool_calls", None) or []:
+        args = call.get("args") if isinstance(call, dict) else None
+        if not isinstance(args, str):
+            continue
+        for candidate in (repair_unescaped_quotes(args), args):
+            if not candidate:
+                continue
+            try:
+                return schema.model_validate(json.loads(candidate))
+            except Exception:  # noqa: BLE001 - try the next candidate
+                continue
+    return None
 
 BANNED_CLICHES = [
     "in today's rapidly evolving world",
@@ -72,8 +168,10 @@ class LangChainTextProvider(TextModelProvider):
         self._structured_method = structured_method
 
     def _structured_chain(self, schema: Type[T]):
+        # include_raw turns a parse failure into a returned dict instead of a
+        # raised exception, which is what makes the retry loop below possible.
         return self._model.with_structured_output(
-            schema, method=self._structured_method
+            schema, method=self._structured_method, include_raw=True
         )
 
     async def structured(
@@ -89,10 +187,39 @@ class LangChainTextProvider(TextModelProvider):
             SystemMessage(content=system),
             HumanMessage(content=human_text),
         ]
-        result = await self._structured_chain(schema).ainvoke(messages)
-        if isinstance(result, schema):
-            return result
-        return schema.model_validate(result)
+        chain = self._structured_chain(schema)
+
+        for attempt in range(1, STRUCTURED_ATTEMPTS + 1):
+            outcome = await chain.ainvoke(messages)
+            parsed = outcome.get("parsed")
+            if isinstance(parsed, schema):
+                return parsed
+            if isinstance(parsed, dict):
+                return schema.model_validate(parsed)
+
+            recovered = _recover_structured(outcome.get("raw"), schema)
+            if recovered is not None:
+                logger.info(
+                    "structured output repaired from invalid tool call",
+                    schema=schema.__name__,
+                    attempt=attempt,
+                )
+                return recovered
+
+            logger.warning(
+                "structured output unusable, retrying",
+                schema=schema.__name__,
+                attempt=attempt,
+                attempts=STRUCTURED_ATTEMPTS,
+                error=str(outcome.get("parsing_error"))[:200],
+            )
+            if attempt < STRUCTURED_ATTEMPTS:
+                await asyncio.sleep(STRUCTURED_RETRY_BACKOFF_S * attempt)
+
+        raise ValueError(
+            f"{schema.__name__}: the model returned no usable structured output "
+            f"after {STRUCTURED_ATTEMPTS} attempts."
+        )
 
     async def complete(self, system: str, human: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -376,12 +503,32 @@ def get_text_provider(settings: Settings) -> TextModelProvider:
             ),
         )
 
+    def deepseek_provider() -> Optional[LangChainTextProvider]:
+        if not settings.deepseek_api_key:
+            return None
+        from langchain_openai import ChatOpenAI
+
+        return LangChainTextProvider(
+            ChatOpenAI(
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+                model=settings.deepseek_model,
+                temperature=0.6,
+            ),
+            name=f"deepseek:{settings.deepseek_model}",
+            structured_method=(
+                settings.deepseek_structured_output_method
+                or settings.structured_output_method
+            ),
+        )
+
     factories: Dict[str, Callable[[], Optional[TextModelProvider]]] = {
         "openai": openai_provider,
         "anthropic": anthropic_provider,
         "qwen": qwen_provider,
         "groq": groq_provider,
         "openrouter": openrouter_provider,
+        "deepseek": deepseek_provider,
     }
 
     if choice == "mock":
@@ -397,7 +544,8 @@ def get_text_provider(settings: Settings) -> TextModelProvider:
         return provider
 
     # openrouter needs the key; groq/openai/qwen/anthropic stay for backwards compat.
-    for key in ("openrouter", "groq", "openai", "qwen", "anthropic"):
+    # deepseek sits after groq so existing auto-mode precedence is unchanged.
+    for key in ("openrouter", "groq", "deepseek", "openai", "qwen", "anthropic"):
         provider = factories[key]()
         if provider is not None:
             logger.info("text_provider selected (auto)", provider=provider.name)

@@ -4,6 +4,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.models.schemas import ContentPlan, LinkedInPostOutput, ReworkOutput
+from app.prompts.guidelines import text_rules_text
 
 # ── Content plan ──────────────────────────────────────────────
 PLAN_SYSTEM = """You are an expert LinkedIn content planner for the analysed
@@ -124,7 +125,9 @@ Output fields:
 - hashtags: 5-10 dynamic topic/niche-relevant tags (no personal/brand tags)
 - full_post: the complete publishable text = hook + body + cta + blank line +
   hashtags joined by spaces
-"""
+
+LINKEDIN POSTING GUIDELINES (authoritative — the post MUST satisfy every one):
+""" + text_rules_text()
 
 WRITER_HUMAN = """Topic: {topic}
 Industry/community: {industry}

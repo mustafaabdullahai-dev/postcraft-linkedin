@@ -74,7 +74,7 @@ export default function QueryInput({ value, onChange, placeholder, onSubmit, aut
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div>
         <p className="label mb-1.5">Topic</p>
         <textarea
@@ -93,11 +93,11 @@ export default function QueryInput({ value, onChange, placeholder, onSubmit, aut
             }
           }}
           placeholder={placeholder ?? "Write your topic — e.g. Why agentic AI is reshaping software teams"}
-          rows={3}
+          rows={2}
           autoFocus={autoFocus}
           className="input resize-none leading-relaxed"
         />
-        <p className="hint mt-1.5">
+        <p className="hint compact-hide mt-1.5">
           <kbd className="kbd">Enter</kbd> to generate · <kbd className="kbd">Shift+Enter</kbd> new line ·{" "}
           <kbd className="kbd">Tab</kbd> accepts the suggestion
         </p>

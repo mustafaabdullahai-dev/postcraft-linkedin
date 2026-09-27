@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -17,6 +19,56 @@ logger = get_logger(__name__)
 LINKEDIN_AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
 LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 LINKEDIN_API = "https://api.linkedin.com"
+
+# LinkedIn renders shareCommentary.text as plain text — it has no markdown
+# parser — so `**bold**` would reach the feed with literal asterisks. Strip the
+# emphasis markers here, at the publish boundary only: the stored post keeps its
+# markdown so the Google Sheets / CSV exports still render it.
+#
+# The `(?<!\w)` / `(?!\w)` fences stop emphasis from matching inside identifiers
+# (`snake_case_name`) and the `(?=\S)` guards stop spaced-out asterisks
+# (`2 * 3`, `a ** b`) from being read as emphasis.
+_EMPHASIS = re.compile(
+    r"(?<![\w*])([*_]{1,3})(?!\*)(?=\S)(.+?)(?<=\S)(?<!\*)\1(?![\w*])", re.DOTALL
+)
+_STRAY_EMPHASIS = re.compile(r"(?<!\s)\*{2,3}(?!\s)|(?<!\s)_{2,3}(?!\s)")
+_STRIKE = re.compile(r"~~(?=\S)(.+?)(?<=\S)~~", re.DOTALL)
+_BULLET = re.compile(r"(?m)^[ \t]*[*+\-][ \t]+")
+_HEADING = re.compile(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+")
+_QUOTE = re.compile(r"(?m)^[ \t]{0,3}>[ \t]?")
+_CODE_FENCE = re.compile(r"```.*?```", re.DOTALL)
+_INLINE_CODE = re.compile(r"`([^`\n]+)`")
+_FENCE_MARK = "\x00fence{}\x00"
+_INLINE_MARK = "\x00inline{}\x00"
+
+
+def to_plain_text(text: str) -> str:
+    """Flatten markdown into the plain text LinkedIn's feed actually renders.
+
+    Code (fenced and inline) is stashed and restored last with its contents
+    verbatim, so a snippet containing `**kwargs`, `-` or `#` survives intact
+    instead of being mistaken for emphasis or a list marker.
+    """
+    if not text:
+        return text
+    blocks: List[str] = []
+
+    def _keep(value: str) -> str:
+        blocks.append(value)
+        return _INLINE_MARK.format(len(blocks) - 1)
+
+    out = _CODE_FENCE.sub(lambda m: _keep(m.group(0)[3:-3].strip("\n")), text)
+    out = _INLINE_CODE.sub(lambda m: _keep(m.group(1)), out)
+    out = _HEADING.sub("", out)
+    out = _QUOTE.sub("", out)
+    out = _BULLET.sub("• ", out)
+    out = _STRIKE.sub(r"\1", out)
+    out = _EMPHASIS.sub(r"\2", out)
+    out = _STRAY_EMPHASIS.sub("", out)
+    out = out.replace("```", "")
+    for i, block in enumerate(blocks):
+        out = out.replace(_INLINE_MARK.format(i), block)
+    return out
 
 
 class LinkedInError(Exception):
@@ -184,6 +236,14 @@ class LinkedInPublisher:
         }
         person_id = person_urn.split(":")[-1]
 
+        # This is the last stop before the network: LinkedIn has no markdown
+        # renderer, so anything still wearing `**bold**` would show up on the
+        # feed with literal asterisks. The stored post is untouched, so the
+        # Google Sheets / CSV exports keep their markdown.
+        text = to_plain_text(text)
+        if not text.strip():
+            raise LinkedInError("Cannot publish an empty post.")
+
         image_urn: Optional[str] = None
         if image_url:
             image_urn = await self._upload_image(image_url, person_id, headers)
@@ -266,10 +326,22 @@ class LinkedInPublisher:
             if "base64" in header:
                 return base64.b64decode(payload)
             return payload.encode("utf-8")
+        # Manually uploaded images live on this server as "/uploads/<file>".
+        if image_url.startswith("/uploads/"):
+            root = Path(self._settings.data_dir).expanduser()
+            if not root.is_absolute():
+                root = Path.cwd() / root
+            path = (root / "uploads" / Path(image_url).name).resolve()
+            uploads_root = (root / "uploads").resolve()
+            if uploads_root not in path.parents:  # no path traversal
+                raise LinkedInError("Invalid uploaded image path.")
+            if not path.is_file():
+                raise LinkedInError("Uploaded image no longer exists.")
+            return path.read_bytes()
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.get(image_url)
             resp.raise_for_status()
             return resp.content
 
 
-__all__ = ["LinkedInPublisher", "LinkedInError"]
+__all__ = ["LinkedInPublisher", "LinkedInError", "to_plain_text"]

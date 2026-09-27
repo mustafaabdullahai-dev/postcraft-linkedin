@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PostFilters, PostRecord, StatusCounts } from "../types";
 import { api } from "../services/api";
 import { formatLocalTime } from "../utils/format";
+import { toLinkedInText } from "../utils/linkedin";
 import StatusBadge from "./StatusBadge";
 import Skeleton from "./Skeleton";
 
@@ -20,6 +21,7 @@ interface Props {
   onDuplicate: (rec: PostRecord) => void;
   onToast: (text: string, kind?: "success" | "error", action?: { label: string; onClick: () => void }) => void;
   onTotal?: (n: number) => void;
+  onCounts?: (c: StatusCounts | null) => void;
 }
 
 function CopyIcon() {
@@ -57,6 +59,15 @@ function PencilIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M8 1.8v7.4m0 0 2.6-2.6M8 9.2 5.4 6.6" />
+      <path d="M2.4 10.6v1.8a1.6 1.6 0 0 0 1.6 1.6h8a1.6 1.6 0 0 0 1.6-1.6v-1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function Thumb({ rec }: { rec: PostRecord }) {
   if (rec.image_url) {
     return (
@@ -76,9 +87,8 @@ function Thumb({ rec }: { rec: PostRecord }) {
   );
 }
 
-export default function PostHistory({ filters, reloadKey, selectedId, onSelect, onDuplicate, onToast, onTotal }: Props) {
+export default function PostHistory({ filters, reloadKey, selectedId, onSelect, onDuplicate, onToast, onTotal, onCounts }: Props) {
   const [items, setItems] = useState<PostRecord[]>([]);
-  const [counts, setCounts] = useState<StatusCounts | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -101,7 +111,7 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
     setCopiedId(null);
     setItems([]);
     setTotal(0);
-    setCounts(null);
+    onCounts?.(null);
     setLoading(true);
     const run = ++seq.current;
     void api
@@ -110,7 +120,7 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
         if (run !== seq.current) return;
         setItems(d.items);
         setTotal(d.total);
-        setCounts(d.counts);
+        onCounts?.(d.counts);
         onTotal?.(d.total);
       })
       .catch(() => {
@@ -143,11 +153,13 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
   };
 
   const copyPost = async (rec: PostRecord) => {
-    const text = rec.final_post ?? rec.generated_post;
+    // LinkedIn has no markdown renderer, so strip emphasis markers here too —
+    // matching what the API publishes. The stored post keeps its markdown.
+    const text = toLinkedInText(rec.final_post ?? rec.generated_post ?? "");
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(rec.record_id);
-      onToast("Post copied to clipboard");
+      onToast("Copied — ready to paste into LinkedIn");
       setTimeout(() => setCopiedId(null), 1600);
     } catch {
       onToast("Clipboard unavailable", "error");
@@ -218,8 +230,15 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
     const onDocClick = (e: MouseEvent) => {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExportOpen(false);
+    };
     document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   const wordCount = (rec: PostRecord) => {
@@ -230,7 +249,7 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
@@ -260,10 +279,11 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
           <button
             type="button"
             onClick={() => setExportOpen((s) => !s)}
-            className="flex items-center gap-1 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+            className="flex h-11 items-center gap-1.5 rounded-full border border-[var(--line-strong)] px-3.5 text-xs font-semibold text-[var(--muted)] transition hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+            aria-haspopup="true"
             aria-expanded={exportOpen}
           >
-            ⭳ Export
+            <DownloadIcon /> Export
           </button>
           {exportOpen && (
             <div
@@ -298,7 +318,7 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
           }
           onClick={() => void deleteAll()}
           disabled={total === 0}
-          className={`flex min-w-[7.75rem] items-center justify-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+          className={`flex h-11 min-w-[7.75rem] items-center justify-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
             confirmAll
               ? "border-[var(--danger)] bg-[var(--danger)] text-white shadow-[0_1px_8px_color-mix(in_srgb,var(--danger)_45%,transparent)]"
               : "border-[var(--line-strong)] bg-transparent text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger)] hover:text-white"
@@ -327,25 +347,10 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
         )}
       </div>
 
-      {counts && (
-        <div className="grid grid-cols-2 gap-2.5 text-center sm:grid-cols-5">
-          {[
-            ["All", total],
-            ["Review", counts.ready_for_review],
-            ["Scheduled", counts.scheduled],
-            ["Published", counts.published],
-            ["Failed", counts.failed],
-          ].map(([label, n]) => (
-            <div key={label} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-2 py-2.5">
-              <div className="text-xl font-bold text-[var(--ink)]">{n}</div>
-              <div className="label !text-[10px]">{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
 
+      <div className="flex min-h-0 flex-1 flex-col">
       {loading && !items.length ? (
-        <div className="space-y-2 rounded-xl border border-[var(--line)] p-2">
+        <div className="flex-1 space-y-2 rounded-xl border border-[var(--line)] p-2">
           {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center gap-2.5 rounded-lg p-2.5" style={{ background: "var(--surface)" }}>
               <Skeleton className="skeleton h-9 w-9 shrink-0 !rounded-md" />
@@ -358,13 +363,13 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
           ))}
         </div>
       ) : !items.length ? (
-        <p className="rounded-xl border border-dashed border-[var(--line-strong)] p-6 text-center text-sm text-[var(--faint)]">
+        <p className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-[var(--line-strong)] p-6 text-center text-sm text-[var(--faint)]">
           {loading ? "Loading…" : search || filters.priority || filters.post_type || filters.status
             ? "No posts match these filters."
             : "No posts yet — generate your first one."}
         </p>
       ) : (
-        <div className="max-h-[42vh] overflow-y-auto rounded-xl border border-[var(--line)]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-[var(--line)]">
           <ul className="divide-hair divide-y bg-[var(--surface)]">
             {items.map((p) => {
               const { words, hook } = wordCount(p);
@@ -479,6 +484,7 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
           </ul>
         </div>
       )}
+      </div>
 
       {hasMore && (
         <button

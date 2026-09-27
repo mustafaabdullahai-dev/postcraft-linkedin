@@ -28,6 +28,7 @@ class LinkedInPostState(TypedDict, total=False):
     image_url: Optional[str]
     image_negative_prompt: str
     image_provider: str
+    include_image: bool  # False = text-only post, skip prompt + render
 
     validation_result: Dict[str, Any]
     validation_status: str

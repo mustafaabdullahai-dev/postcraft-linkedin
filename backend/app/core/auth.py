@@ -16,6 +16,22 @@ SESSION_COOKIE = "session"
 MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 _serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="auth")
+# Short-lived, single-purpose code handed to the SPA after OAuth. Cookies are
+# unreliable through cross-site redirects on some mobile/in-app browsers, so the
+# frontend exchanges this code for a Bearer token (the same mechanism guests use).
+_exchange_serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="auth-exchange")
+EXCHANGE_MAX_AGE = 120  # seconds
+
+
+def create_exchange_code(user_id: str) -> str:
+    return _exchange_serializer.dumps(user_id)
+
+
+def verify_exchange_code(code: str) -> Optional[str]:
+    try:
+        return _exchange_serializer.loads(code, max_age=EXCHANGE_MAX_AGE)  # type: ignore[arg-type]
+    except (BadSignature, SignatureExpired):
+        return None
 
 
 def create_session_token(user_id: str) -> str:
@@ -63,6 +79,8 @@ def get_current_user(
 __all__ = [
     "create_session_token",
     "verify_session_token",
+    "create_exchange_code",
+    "verify_exchange_code",
     "get_current_user",
     "SESSION_COOKIE",
     "MAX_AGE",

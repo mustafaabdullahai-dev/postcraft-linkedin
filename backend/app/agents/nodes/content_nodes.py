@@ -226,6 +226,8 @@ async def generate_hashtags(state: LinkedInPostState, ctx: NodeContext = None) -
 
 
 async def generate_image_prompt(state: LinkedInPostState, ctx: NodeContext = None) -> Dict[str, Any]:
+    if state.get("include_image") is False:
+        return {"image_prompt": "", "image_negative_prompt": ""}
     result: ImagePromptOutput = await ctx.text_provider.structured(
         ImagePromptOutput,
         image_prompts.IMAGE_PROMPT_SYSTEM,
@@ -315,6 +317,8 @@ async def rework_post(
 
 
 async def generate_image(state: LinkedInPostState, ctx: NodeContext = None) -> Dict[str, Any]:
+    if state.get("include_image") is False:
+        return {"image_url": "", "image_provider": "none"}
     prompt = state.get("image_prompt", "") or state.get("topic", "")
     logger.info("generating image", provider=getattr(ctx.image_provider, "name", "?"))
     result = await ctx.image_provider.generate_image(prompt)
