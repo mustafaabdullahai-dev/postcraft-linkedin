@@ -224,7 +224,8 @@ Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and
 | `DELETE` | `/api/posts/{id}` | Delete one record; `DELETE /api/posts` clears all (with filters) |
 | `POST` | `/api/posts/{id}/regenerate` | Re-run generation for the post |
 | `POST` | `/api/posts/{id}/regenerate-image` | Regenerate just the image |
-| `POST` | `/api/posts/{id}/image` | **Upload a manual image** (multipart) — re-encoded, EXIF stripped |
+| `POST` | `/api/posts/{id}/image` | **Upload a manual image** (multipart) — re-encoded, EXIF stripped, owner-only, then vision-reviewed |
+| `GET` | `/uploads/{name}` | Serve an uploaded image — **owner only** (401 anonymous, 403 non-owner) |
 | `POST` | `/api/posts/{id}/rework` | Rewrite the post to a specified angle |
 | `POST` | `/api/posts/{id}/duplicate` | Create a copy as a new draft |
 | `POST` | `/api/posts/{id}/suggest-edits` | AI copy-editing suggestions for the draft |
@@ -244,6 +245,13 @@ Every `/api/posts/*` endpoint requires auth (Bearer token or session cookie) and
 
 **Post lifecycle:** `INITIALIZED → GENERATED → READY_FOR_REVIEW → APPROVED/REJECTED → PUBLISHED (or FAILED)`, with a `SCHEDULED` stage when a publish time is set and the scheduler is running.
 Editing a published post puts it back to `EDITED` and republishing creates a fresh LinkedIn post (a revision), keeping the original.
+
+**Uploaded images** are owner-scoped twice over: the upload endpoint requires you to
+own the post, and `/uploads/{name}` returns `401` when anonymous and `403` for any
+user who doesn't own the post the image belongs to. Each upload also carries its
+vision review in `record.image_analysis` (`{status, score, issues, summary, model,
+checked_at}`). The frontend loads these images with the session token via
+`AuthedImage`, so token-based (guest) sessions work too.
 **Filters:** `priority` (`High`/`Medium`/`Low`), `post_type` (`How-To`, `Thought Leadership`, `Insights`,
 `News`, `Motivational`, `Promotional`), `status` (lifecycle value, e.g. `PUBLISHED`).
 
