@@ -50,9 +50,17 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   it will land ("inserts after …"). Every insert is markdown-safe.
 - **Text-only or text + image** — pick the output in Create (Topic tab). Text-only
   skips both the image-prompt LLM call and the render, so it's faster and cheaper.
-- **Manual image upload** — besides AI generation, a user can attach a photo from
-  their own device. It is re-encoded server-side (EXIF orientation applied,
-  metadata/GPS stripped, resized to 1600px) and uploads to LinkedIn like any other.
+- **Manual image upload, with consent** — besides AI generation, a user can attach
+  a photo from their own device. Before the browser picker opens they see exactly
+  how it is handled (visible only to them, no public access, EXIF/GPS stripped,
+  used only for this post). On upload the server re-encodes it (orientation
+  applied, metadata removed, resized to 1600px) and it uploads to LinkedIn like
+  any other image.
+- **LLM image compliance check** — every uploaded image is reviewed by a vision
+  model against LinkedIn's image rules and gets a **PASSED / REVIEW** verdict with
+  the specific issues (off-topic, watermarks/logos, gibberish or wrong-language
+  text, unprofessional or sensitive content), shown right in the Visuals section.
+  Configure with `VISION_PROVIDER` (`auto | qwen | gemini | off`).
 - **Copy for LinkedIn** — LinkedIn has no markdown renderer, so `**bold**` would
   arrive as literal asterisks. The API strips markdown at the publish boundary and
   the UI offers a **"Copy for LinkedIn"** button that does the same for paste-in.

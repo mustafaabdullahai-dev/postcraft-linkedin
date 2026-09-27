@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     gemini_image_model: str = "gemini-3.1-flash-image"
     gemini_image_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
+    # Vision review of manually uploaded images (LinkedIn image compliance).
+    # "auto" | "qwen" | "gemini" | "off". Empty model = provider default.
+    vision_provider: str = "auto"
+    vision_model: str = ""
+
     # LinkedIn
     linkedin_dry_run: bool = True
     linkedin_client_id: str = ""

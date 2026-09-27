@@ -1,24 +1,30 @@
 import { useRef, useState } from "react";
 
+import type { ImageAnalysis } from "../types";
 import AuthedImage from "./AuthedImage";
 
 interface Props {
   url: string;
   prompt: string;
   busy?: boolean;
+  analysis?: ImageAnalysis;
   onRegenerate?: (prompt?: string) => void;
   onUpload?: (file: File) => void;
 }
 
-export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload }: Props) {
+export default function ImagePreview({ url, prompt, busy, analysis, onRegenerate, onUpload }: Props) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
+  // Accessing the device gallery is opt-in: the user sees what happens to the
+  // file before the browser picker opens.
+  const [consent, setConsent] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const isSvg = url.startsWith("data:image/svg") || url.endsWith(".svg");
 
   const pickFile = (files: FileList | null) => {
     const file = files?.[0];
+    setConsent(false);
     if (file) onUpload?.(file);
   };
 
@@ -39,8 +45,9 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
     <>
       <button
         type="button"
-        onClick={() => fileRef.current?.click()}
+        onClick={() => setConsent((v) => !v)}
         disabled={busy}
+        aria-expanded={consent}
         className="btn-secondary px-3 py-1 text-xs"
         title="Upload a photo from your device"
       >
@@ -48,6 +55,101 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
       </button>
       {uploadInput}
     </>
+  ) : null;
+
+  const analysisBox = analysis?.status ? (
+    <div
+      className="rounded-xl border p-3"
+      style={{
+        borderColor:
+          analysis.status === "PASSED"
+            ? "var(--ok-soft)"
+            : analysis.status === "REVIEW"
+              ? "var(--warn-soft)"
+              : "var(--line)",
+        background:
+          analysis.status === "PASSED"
+            ? "var(--ok-soft)"
+            : analysis.status === "REVIEW"
+              ? "var(--warn-soft)"
+              : "var(--surface-2)",
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+          style={{
+            background: "var(--surface)",
+            color:
+              analysis.status === "PASSED"
+                ? "var(--ok)"
+                : analysis.status === "REVIEW"
+                  ? "var(--warn)"
+                  : "var(--muted)",
+          }}
+        >
+          {analysis.status}
+        </span>
+        <span className="text-[11px] font-semibold" style={{ color: "var(--ink-soft)" }}>
+          LinkedIn image check
+        </span>
+        {typeof analysis.score === "number" && analysis.score > 0 && (
+          <span className="text-[10px]" style={{ color: "var(--faint)" }}>
+            {Math.round(analysis.score * 100)}%
+          </span>
+        )}
+      </div>
+      {analysis.summary && (
+        <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--muted)" }}>
+          {analysis.summary}
+        </p>
+      )}
+      {!!analysis.issues?.length && (
+        <ul className="mt-1.5 space-y-0.5">
+          {analysis.issues.map((issue, i) => (
+            <li key={i} className="text-[11px] leading-snug" style={{ color: "var(--muted)" }}>
+              • {issue}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
+
+  // Shown before the OS picker opens, so the user knows how their photo is
+  // handled before granting access.
+  const consentPanel = consent ? (
+    <div
+      className="space-y-2 rounded-xl border p-3 text-left"
+      style={{ borderColor: "var(--accent-soft)", background: "var(--accent-soft)" }}
+    >
+      <p className="text-xs font-semibold" style={{ color: "var(--accent-ink)" }}>
+        🔒 Your photo stays private
+      </p>
+      <ul className="space-y-0.5 text-[11px] leading-snug" style={{ color: "var(--accent-ink)" }}>
+        <li>• Visible only to you — not to other users or the public.</li>
+        <li>• Location &amp; camera metadata (EXIF/GPS) are stripped on upload.</li>
+        <li>• Resized and stored on this server, used only for this post.</li>
+        <li>• Automatically checked against LinkedIn's image rules.</li>
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="btn-primary !px-3 !py-1.5 text-xs"
+        >
+          Choose from gallery
+        </button>
+        <button
+          type="button"
+          onClick={() => setConsent(false)}
+          className="btn-ghost !px-3 !py-1 text-xs"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   ) : null;
 
   const applyCustom = () => {
@@ -83,6 +185,8 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
         {uploadButton && (
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">{uploadButton}</div>
         )}
+        {consentPanel && <div className="w-full">{consentPanel}</div>}
+        {analysisBox}
       </div>
     );
   }
@@ -160,6 +264,9 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
           </div>
         </div>
       )}
+
+      {analysisBox}
+      {consentPanel}
 
       <details className="text-xs" style={{ color: "var(--faint)" }}>
         <summary className="cursor-pointer transition" style={{}} onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink-soft)")}>

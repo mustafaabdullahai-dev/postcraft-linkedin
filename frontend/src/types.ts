@@ -19,9 +19,7 @@ export interface User {
 export interface GuidelineItem {
   title: string;
   detail: string;
-}
-
-export interface GuidelineGroup {
+}export interface GuidelineGroup {
   id: string;
   title: string;
   items: GuidelineItem[];
@@ -31,6 +29,16 @@ export interface GuidelinesPayload {
   disclaimer?: string;
   groups: GuidelineGroup[];
   source?: string;
+}
+
+/** LLM review of an uploaded image against LinkedIn's image guidelines. */
+export interface ImageAnalysis {
+  status?: string; // PASSED | REVIEW | UNVERIFIED
+  score?: number;
+  issues?: string[];
+  summary?: string;
+  model?: string;
+  checked_at?: string;
 }
 
 export interface PostRecord {
@@ -52,6 +60,7 @@ export interface PostRecord {
   image_prompt: string;
   image_url: string | null;
   image_provider: string;
+  image_analysis?: ImageAnalysis;
   text_model: string;
   validation_status: string;
   validation_result: ValidationResult;

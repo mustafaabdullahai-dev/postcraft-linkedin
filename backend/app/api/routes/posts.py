@@ -802,7 +802,13 @@ async def upload_image(
     rec.image_provider = "upload"
     rec.image_prompt = ""
     rec.touch("IMAGE_UPLOADED")
-    logger.info("manual image attached", record_id=record_id, bytes=len(data))
+
+    # Review the image against LinkedIn's image guidelines (never blocks upload).
+    from app.services.image_analysis import analyze_image
+
+    analysis = await analyze_image(data, app_ctx.settings)
+    rec.image_analysis = analysis.to_dict()
+    logger.info("manual image attached", record_id=record_id, bytes=len(data), verdict=analysis.status)
     return _flush(rec, request)
 
 

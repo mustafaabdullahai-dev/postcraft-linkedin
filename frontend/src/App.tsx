@@ -876,6 +876,7 @@ export default function App() {
                     url={selected.image_url ?? ""}
                     prompt={selected.image_prompt}
                     busy={busy}
+                    analysis={selected.image_analysis}
                     onRegenerate={regenImage}
                     onUpload={uploadImage}
                   />

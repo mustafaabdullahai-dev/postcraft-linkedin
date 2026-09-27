@@ -50,6 +50,9 @@ class PostRecord(BaseModel):
     image_negative_prompt: str = ""
     image_url: Optional[str] = None
     image_provider: str = ""
+    # LLM review of a manually uploaded image against LinkedIn's image
+    # guidelines: {status, score, issues, summary, model, checked_at}.
+    image_analysis: Dict[str, Any] = Field(default_factory=dict)
 
     text_model: str = ""
 
