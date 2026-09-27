@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     )
     # /docs, /redoc, /openapi.json. Set false for any public deployment.
     docs_enabled: bool = True
+    # Include provider names / modes / environment in GET /api/health. Off by
+    # default so a public deployment doesn't advertise its internals.
+    health_verbose: bool = False
     # Allow the "continue as guest" demo path. Disable for real public use.
     allow_guest_login: bool = True
 

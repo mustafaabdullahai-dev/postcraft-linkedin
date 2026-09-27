@@ -89,11 +89,9 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   sections, publish actions) all reflow and keep 44px tap targets.
 - **Auditing** — Google Sheets row-per-post per user, plus a local JSONL audit log
   and a per-user JSON post store with full event history.
-- **Hardened for public use** — security headers (CSP/HSTS/X-Frame-Options),
-  `/docs` gating, log redaction, LinkedIn OAuth tokens **encrypted at rest**,
-  per-IP rate limiting and per-user/global daily AI quotas (all configurable, `0`
-  disables), trusted-proxy aware client IPs, and a **startup guard that refuses to
-  boot** on an insecure production config.
+- **Hardened for public use** — security headers, log redaction, OAuth tokens
+  encrypted at rest, rate limiting and daily AI quotas, and a startup check that
+  refuses to boot on an insecure production config (see `app/core/config.py`).
 - **Resilient** — structured logging with request IDs, publish retry-safe
   endpoint, approval that survives a restart, and dry-run modes everywhere.
 
@@ -314,34 +312,15 @@ backend **ruff lint + pytest** and frontend **typecheck + build** (`tsc && vite 
 
 ## Production notes
 
-### Security hardening (configurable, safe defaults)
-
-| Setting | Purpose |
-| --- | --- |
-| `SECRET_KEY` | Signs session tokens **and** derives the key that encrypts LinkedIn tokens at rest. Use a long random value; changing it logs everyone out. |
-| `RATE_LIMIT_PER_MINUTE` | Per-IP sliding window across all AI-cost endpoints (`0` disables). |
-| `DAILY_GENERATIONS_PER_USER`, `DAILY_IMAGES_PER_USER` | Per-user daily AI ceilings (`0` = unlimited). |
-| `GLOBAL_DAILY_AI_CALLS` | Whole-app daily ceiling — the last line of defence against runaway spend. |
-| `TRUSTED_PROXIES` | Only these peers may set `X-Forwarded-For`, so clients can't spoof their IP to dodge limits. |
-| `SECURITY_HEADERS` | CSP, X-Frame-Options, nosniff, Referrer-Policy, COOP (+ HSTS in production). |
-| `DOCS_ENABLED` | Serves `/docs`, `/redoc`, `/openapi.json` — set `false` publicly. |
-| `ALLOW_GUEST_LOGIN` | The "continue as guest" demo path — set `false` for public deployments. |
-
-With `ENVIRONMENT=production` the app **refuses to start** if any of these is
-insecure (default secret, `*` origin, non-HTTPS `FRONTEND_URL`, docs/guest enabled,
-no quota set). Secrets are additionally redacted from logs.
-
-### Storage & scaling
-
-- The LangGraph checkpointer is **in-memory** (`MemorySaver`): restarting loses the
-  thread, so approval falls back to publishing from the stored record. Swap in
-  `SqliteSaver`/`PostgresSaver` for horizontal deployments.
-- Posts, users, voice profiles and daily usage are JSON-file stores; swap
-  `PostStore`/`UserStore` for Postgres/Redis for scale.
-- Manually uploaded images live in `backend/data/uploads/` and are served from
-  `/uploads` (proxied through Vite in dev) — put them on object storage for scale.
+- JSON-file stores (posts, users, voices, usage) and the in-memory LangGraph
+  checkpointer suit a single node; move to Postgres/Redis before scaling
+  horizontally.
+- Manually uploaded images live in `backend/data/uploads/` and are served through
+  the authenticated `/uploads` endpoint — never as public static files.
 - `frontend/vite.config.ts` proxies `/api` and `/uploads` to `:8001`
-  (`VITE_PROXY_TARGET` to override); in production serve `frontend/dist` from
+  (`VITE_PROXY_TARGET` to override). In production serve `frontend/dist` from
   FastAPI or nginx and proxy those two paths.
-- Never commit `.env`; keep `backend/data/` gitignored (users, posts, uploads and
-  audit logs are local state).
+- Always set `ENVIRONMENT=production` in a real deployment and read
+  `backend/app/core/config.py` for the supported settings.
+- **Never commit `.env` or `backend/data/`** — they hold credentials, user records,
+  posts and uploads.

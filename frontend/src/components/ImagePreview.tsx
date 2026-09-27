@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 
+import AuthedImage from "./AuthedImage";
+
 interface Props {
   url: string;
   prompt: string;
@@ -97,7 +99,7 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
             scrolling="no"
           />
         ) : (
-          <img
+          <AuthedImage
             src={url}
             alt="AI generated for this post"
             className="h-56 w-full cursor-zoom-in object-cover transition hover:opacity-95"
@@ -169,7 +171,7 @@ export default function ImagePreview({ url, prompt, busy, onRegenerate, onUpload
       </details>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={() => setOpen(false)}>
-          <img src={url} alt="expanded" className="max-h-full max-w-full rounded-xl" />
+          <AuthedImage src={url} alt="expanded" className="max-h-full max-w-full rounded-xl" />
         </div>
       )}
     </div>

@@ -12,6 +12,12 @@ router = APIRouter(prefix="/api", tags=["health"])
 def health(request: Request) -> HealthResponse:
     app_ctx = request.app.state.app_ctx
     s = app_ctx.settings
+    if not s.health_verbose:
+        # Public deployment: don't advertise providers, modes or environment.
+        return HealthResponse(
+            status="ok",
+            linkedin_configured=app_ctx.linkedin_publisher.oauth_configured(),
+        )
     return HealthResponse(
         status="ok",
         environment=s.environment,

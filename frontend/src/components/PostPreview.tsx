@@ -1,4 +1,5 @@
 import type { PostRecord, User } from "../types";
+import AuthedImage from "./AuthedImage";
 
 const AVATAR_GRADIENTS = [
   "linear-gradient(135deg,#2f6fed,#7b2ff7)",
@@ -158,7 +159,7 @@ return (
               scrolling="no"
             />
           ) : (
-            <img src={record.image_url!} alt="post" className={m ? "max-h-64 w-full object-cover" : "max-h-96 w-full object-cover"} />
+            <AuthedImage src={record.image_url!} alt="post" className={m ? "max-h-64 w-full object-cover" : "max-h-96 w-full object-cover"} />
           )}
         </div>
       )}

@@ -4,12 +4,10 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.api import main_router_modules
 from app.core.abuse import RateLimiter, client_ip
@@ -148,15 +146,6 @@ app.add_middleware(
 
 for module in main_router_modules:
     app.include_router(module.router)
-
-
-# ─── user-uploaded images (manual "pick from gallery") ────────
-_uploads_dir = Path(_boot_settings.data_dir).expanduser()
-if not _uploads_dir.is_absolute():
-    _uploads_dir = Path.cwd() / _uploads_dir
-_uploads_dir = _uploads_dir / "uploads"
-_uploads_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 @app.get("/")

@@ -274,12 +274,19 @@ class VoiceProfileUpdate(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    """Public health payload.
+
+    Provider names, modes and environment are only populated outside production —
+    a public deployment should not advertise its internals. `linkedin_configured`
+    stays because the login screen needs it to enable the LinkedIn button.
+    """
+
     status: str = "ok"
-    environment: str
-    text_provider: str
-    image_provider: str
-    linkedin_mode: str
-    sheets_mode: str
+    environment: str = ""
+    text_provider: str = ""
+    image_provider: str = ""
+    linkedin_mode: str = ""
+    sheets_mode: str = ""
     linkedin_configured: bool = False
     time: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
