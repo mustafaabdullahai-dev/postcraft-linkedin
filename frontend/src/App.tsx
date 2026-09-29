@@ -837,8 +837,8 @@ export default function App() {
                           onChange={(d) => setEdits((e) => ({ ...e, draft: d, dirty: true }))}
                         />
                         <p className="hint mt-1.5" style={{ color: "var(--faint)" }}>
-                          **Bold** renders here, but LinkedIn has no markdown — use “Copy for LinkedIn” for
-                          ready-to-paste text (the API strips it automatically on publish).
+                          <strong>Bold</strong> here becomes real bold on LinkedIn — “Copy for LinkedIn”
+                          converts it to Unicode bold, and publishing does the same automatically.
                         </p>
                       </div>
                       <EditSuggestions

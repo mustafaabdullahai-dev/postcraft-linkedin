@@ -1,11 +1,29 @@
 /**
- * Convert markdown emphasis into the plain text LinkedIn actually renders.
+ * Convert markdown emphasis into the text LinkedIn actually renders.
  *
- * LinkedIn's feed has no markdown parser, so `**bold**` shows up as literal
- * asterisks. This mirrors the backend `app/services/linkedin.py::to_plain_text`
- * so a copied post matches exactly what the API publishes. Written without
- * lookbehind assertions so it also parses on Safari < 16.4.
+ * LinkedIn's feed has no markdown parser, but it *does* render the Unicode
+ * Mathematical Alphanumeric Symbols — so `**bold**` is converted to real bold
+ * characters and stays visually bold on the feed, instead of showing asterisks.
+ * This mirrors the backend `app/services/linkedin.py::to_linkedin_text`, so a
+ * copied post matches exactly what the API publishes. Written without lookbehind
+ * assertions so it also parses on Safari < 16.4.
  */
+const BOLD_RANGES: Array<[number, number, number]> = [
+  [65, 90, 0x1d400], // A-Z
+  [97, 122, 0x1d41a], // a-z
+  [48, 57, 0x1d7ce], // 0-9
+];
+
+export function toUnicodeBold(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const range = BOLD_RANGES.find(([lo, hi]) => cp >= lo && cp <= hi);
+    out += range ? String.fromCodePoint(range[2] + cp - range[0]) : ch;
+  }
+  return out;
+}
+
 export function toLinkedInText(text: string): string {
   if (!text) return "";
   const blocks: string[] = [];
@@ -21,13 +39,18 @@ export function toLinkedInText(text: string): string {
     .replace(/^[ \t]{0,3}>[ \t]?/gm, "")
     .replace(/^[ \t]*[*+\-][ \t]+/gm, "• ")
     .replace(/~~([^~\n]+)~~/g, "$1")
-    .replace(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
-    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
-    .replace(/__([^_\n]+)__/g, "$1")
-    .replace(/(^|[^\w*])\*([^*\n]+)\*(?=[^\w*]|$)/g, "$1$2")
-    .replace(/(^|[^\w_])_([^_\n]+)_(?=[^\w_]|$)/g, "$1$2")
-    .replace(/\*{2,3}/g, "")
-    .replace(/_{2,3}/g, "");
+    // Emphasis needs non-space edges (so "2 * 3" and "a * b" survive), matching
+    // the backend's `_EMPHASIS` behaviour.
+    .replace(/\*\*\*(?!\s)([^*\n]*[^\s*])\*\*\*/g, (_m, inner: string) => toUnicodeBold(inner))
+    .replace(/\*\*(?!\s)([^*\n]*[^\s*])\*\*/g, (_m, inner: string) => toUnicodeBold(inner))
+    .replace(/__(?!\s)([^_\n]*[^\s_])__(?![\w_])/g, (_m, inner: string) => toUnicodeBold(inner))
+    .replace(/(^|[^\w*])\*(?!\s)([^*\n]*[^\s*])\*(?=[^\w*]|$)/g, "$1$2")
+    .replace(/(^|[^\w_])_(?!\s)([^_\n]*[^\s_])_(?=[^\w_]|$)/g, "$1$2")
+    // Leftover marker runs are only removed when they are NOT space-separated
+    // (so "a ** b ** c" keeps its asterisks), matching the backend.
+    .replace(/(^|\S)\*{2,3}(?=\S)/g, "$1")
+    .replace(/(^|\S)_{2,3}(?=\S)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n");
 
   return out.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => blocks[Number(i)] ?? "");
 }

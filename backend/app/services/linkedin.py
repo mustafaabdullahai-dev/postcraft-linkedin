@@ -41,13 +41,39 @@ _INLINE_CODE = re.compile(r"`([^`\n]+)`")
 _FENCE_MARK = "\x00fence{}\x00"
 _INLINE_MARK = "\x00inline{}\x00"
 
+# LinkedIn's feed has no markdown renderer, but it *does* render the Unicode
+# Mathematical Alphanumeric Symbols — so emphasis is converted to real bold
+# characters instead of being dropped: **bold** stays visually bold on the feed.
+_BOLD_RANGES = ((ord("A"), ord("Z"), 0x1D400), (ord("a"), ord("z"), 0x1D41A), (ord("0"), ord("9"), 0x1D7CE))
 
-def to_plain_text(text: str) -> str:
-    """Flatten markdown into the plain text LinkedIn's feed actually renders.
 
-    Code (fenced and inline) is stashed and restored last with its contents
-    verbatim, so a snippet containing `**kwargs`, `-` or `#` survives intact
-    instead of being mistaken for emphasis or a list marker.
+def to_unicode_bold(text: str) -> str:
+    """Map A-Z / a-z / 0-9 to their bold Unicode counterparts, pass the rest through."""
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        for lo, hi, base in _BOLD_RANGES:
+            if lo <= cp <= hi:
+                out.append(chr(base + cp - lo))
+                break
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _emphasis_repl(match: "re.Match[str]") -> str:
+    marker, inner = match.group(1), match.group(2)
+    # `**x**` / `__x__` (and triples) become bold; single markers just lose theirs.
+    return to_unicode_bold(inner) if len(marker) >= 2 else inner
+
+
+def to_linkedin_text(text: str) -> str:
+    """Prepare post text for the LinkedIn feed.
+
+    Markdown emphasis is converted to Unicode bold (LinkedIn renders it as real
+    bold), headings/quotes lose their markers, list markers become `•`, and
+    leftover emphasis characters are removed. Code spans are preserved verbatim
+    so a snippet containing `**kwargs` survives.
     """
     if not text:
         return text
@@ -63,12 +89,17 @@ def to_plain_text(text: str) -> str:
     out = _QUOTE.sub("", out)
     out = _BULLET.sub("• ", out)
     out = _STRIKE.sub(r"\1", out)
-    out = _EMPHASIS.sub(r"\2", out)
+    out = _EMPHASIS.sub(_emphasis_repl, out)
     out = _STRAY_EMPHASIS.sub("", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
     out = out.replace("```", "")
     for i, block in enumerate(blocks):
         out = out.replace(_INLINE_MARK.format(i), block)
     return out
+
+
+# Backwards-compatible alias (older callers/tests used the "plain text" name).
+to_plain_text = to_linkedin_text
 
 
 class LinkedInError(Exception):
@@ -240,7 +271,7 @@ class LinkedInPublisher:
         # renderer, so anything still wearing `**bold**` would show up on the
         # feed with literal asterisks. The stored post is untouched, so the
         # Google Sheets / CSV exports keep their markdown.
-        text = to_plain_text(text)
+        text = to_linkedin_text(text)
         if not text.strip():
             raise LinkedInError("Cannot publish an empty post.")
 
@@ -344,4 +375,4 @@ class LinkedInPublisher:
             return resp.content
 
 
-__all__ = ["LinkedInPublisher", "LinkedInError", "to_plain_text"]
+__all__ = ["LinkedInPublisher", "LinkedInError", "to_linkedin_text", "to_unicode_bold", "to_plain_text"]

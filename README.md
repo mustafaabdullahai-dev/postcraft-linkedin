@@ -62,8 +62,9 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   text, unprofessional or sensitive content), shown right in the Visuals section.
   Configure with `VISION_PROVIDER` (`auto | qwen | gemini | off`).
 - **Copy for LinkedIn** — LinkedIn has no markdown renderer, so `**bold**` would
-  arrive as literal asterisks. The API strips markdown at the publish boundary and
-  the UI offers a **"Copy for LinkedIn"** button that does the same for paste-in.
+  arrive as literal asterisks. Instead of dropping emphasis, the publish boundary
+  converts it to **Unicode bold** (which LinkedIn *does* render), and the UI's
+  **"Copy for LinkedIn"** button does the same for paste-in.
 - **LinkedIn compliance, documented in-app** — the exact posting guidelines the
   agent follows (text, image, safety) are a first-class API surface
   (`GET /api/guidelines`) and a panel in the sidebar/mobile menu, with the
@@ -301,10 +302,13 @@ mobile menu.
 An optional second pass asks the LLM for a **quality score** and subjective
 suggestions (advisory only — it never blocks).
 
-**Publishing boundary:** LinkedIn renders `shareCommentary.text` as plain text, so
-`to_plain_text()` strips markdown (`**bold**`, `~~strike~~`, `#`/`>`/list markers)
-right before the API call — while the stored post and the CSV/Markdown exports
-keep their markdown. The frontend mirrors this in `utils/linkedin.ts` for the
+**Publishing boundary:** LinkedIn renders `shareCommentary.text` as plain text (no
+markdown parser), but it *does* render the Unicode Mathematical Alphanumeric
+Symbols. So `to_linkedin_text()` converts `**bold**` / `__bold__` into real bold
+Unicode characters — the emphasis stays bold on the feed — while headings, quote
+markers and list markers are normalised (`- x` → `• x`) and code spans are left
+verbatim. The stored post and the CSV/Markdown exports keep their original
+markdown. The frontend mirrors this exactly in `utils/linkedin.ts` for the
 "Copy for LinkedIn" button.
 
 ## Google Sheets logging (production)

@@ -1,32 +1,41 @@
-"""LinkedIn publish-boundary text flattening.
+"""LinkedIn publish-boundary text normalisation.
 
-LinkedIn's feed renders shareCommentary.text as plain text (no markdown), so
-emphasis markers must be stripped before publishing while the stored post keeps
-its markdown for the Google Sheets / CSV exports.
+LinkedIn's feed renders shareCommentary.text as plain text (no markdown parser),
+but it *does* render Unicode bulge characters. So `**bold**` is converted to real
+bold Unicode rather than dropped — the emphasis survives on the feed — while the
+stored post keeps its markdown for the Google Sheets / CSV exports.
 """
 from __future__ import annotations
 
 import pytest
 
-from app.services.linkedin import to_plain_text
+from app.services.linkedin import to_linkedin_text, to_unicode_bold
+
+BOLD = "\U0001D41B\U0001D428\U0001D425\U0001D41D"  # "bold"
+BOLD_TRIPLE = "\U0001D42D\U0001D42B\U0001D422\U0001D429\U0001D425\U0001D41E"  # "triple"
 
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("**bold**", "bold"),
-        ("__bold__", "bold"),
-        ("***triple***", "triple"),
+        ("**bold**", BOLD),
+        ("__bold__", BOLD),
+        ("***triple***", BOLD_TRIPLE),
         ("*italic*", "italic"),
         ("_italic_", "italic"),
         ("~~strike~~", "strike"),
-        ("**a** and **b**", "a and b"),
+        ("**a** and **b**", "\U0001D41A and \U0001D41B"),
         ("no markup here", "no markup here"),
         ("", ""),
     ],
 )
-def test_emphasis_is_stripped(raw: str, expected: str):
-    assert to_plain_text(raw) == expected
+def test_emphasis_becomes_real_bold(raw: str, expected: str):
+    assert to_linkedin_text(raw) == expected
+
+
+def test_to_unicode_bold_maps_ascii_only():
+    assert to_unicode_bold("Az9!") == "\U0001D400\U0001D433\U0001D7D7!"
+    assert to_unicode_bold("café") == "\U0001D41C\U0001D41A\U0001D41Fé"
 
 
 @pytest.mark.parametrize(
@@ -40,32 +49,34 @@ def test_emphasis_is_stripped(raw: str, expected: str):
     ],
 )
 def test_non_emphasis_asterisks_and_underscores_survive(raw: str):
-    assert to_plain_text(raw) == raw
+    assert to_linkedin_text(raw) == raw
 
 
 def test_bullets_become_real_bullets():
-    assert to_plain_text("- one\n* two\n+ three") == "• one\n• two\n• three"
+    assert to_linkedin_text("- one\n* two\n+ three") == "• one\n• two\n• three"
 
 
 def test_headings_and_quotes_lose_their_markers():
-    assert to_plain_text("## Heading") == "Heading"
-    assert to_plain_text("> quoted") == "quoted"
+    assert to_linkedin_text("## Heading") == "Heading"
+    assert to_linkedin_text("> quoted") == "quoted"
 
 
 def test_code_is_left_verbatim():
     fenced = "```\nsome **code** and - dash\n```"
-    assert to_plain_text(fenced) == "some **code** and - dash"
-    assert to_plain_text("use `**inline**` code") == "use **inline** code"
+    assert to_linkedin_text(fenced) == "some **code** and - dash"
+    assert to_linkedin_text("use `**inline**` code") == "use **inline** code"
 
 
 def test_unbalanced_markers_are_cleaned_up():
-    assert to_plain_text("**unclosed bold") == "unclosed bold"
+    assert to_linkedin_text("**unclosed bold") == "unclosed bold"
 
 
 def test_straight_quotes_are_preserved_for_linkedin_to_smart_quote():
     # LinkedIn converts these server-side; the app must not touch them.
     raw = 'Most "our RAG is broken" tickets are **not** LLM problems.'
-    assert to_plain_text(raw) == 'Most "our RAG is broken" tickets are not LLM problems.'
+    assert to_linkedin_text(raw) == (
+        'Most "our RAG is broken" tickets are \U0001D427\U0001D428\U0001D42D LLM problems.'
+    )
 
 
 def test_publish_text_post_flattens_before_sending(monkeypatch):
@@ -110,7 +121,7 @@ def test_publish_text_post_flattens_before_sending(monkeypatch):
         )
     )
 
-    assert captured["text"] == "Check this out"
+    assert captured["text"] == "Check \U0001D42D\U0001D421\U0001D422\U0001D42C out"
     assert captured["url"].endswith("/v2/ugcPosts")
 
 
