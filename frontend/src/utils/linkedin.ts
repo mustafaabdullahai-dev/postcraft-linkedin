@@ -24,6 +24,23 @@ export function toUnicodeBold(text: string): string {
   return out;
 }
 
+/**
+ * Replace any existing hashtag line with the authoritative tag list.
+ * Mirrors the backend `clean_post` so the copied text matches what is published
+ * — a user can edit the tag list without touching the draft text.
+ */
+export function composeHashtagLine(text: string, hashtags: string[]): string {
+  const isTagLine = (line: string) => {
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    return tokens.length > 0 && tokens.every((t) => t.startsWith("#"));
+  };
+  const isLabel = (line: string) => /^#?\s*hashtags:?\s*$/i.test(line.trim());
+  const kept = text.split("\n").filter((l) => !isLabel(l) && !isTagLine(l));
+  const body = kept.join("\n").trim();
+  const tags = hashtags.filter((h) => h.startsWith("#")).join(" ");
+  return tags ? `${body}\n\n${tags}` : body;
+}
+
 export function toLinkedInText(text: string): string {
   if (!text) return "";
   const blocks: string[] = [];

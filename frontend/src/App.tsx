@@ -26,7 +26,7 @@ import { exchangeAuthCode, logout, me } from "./services/auth";
 import type { FormattingPrefs, GuidelineGroup, PostFilters, PostRecord, StatusCounts, User, VoiceProfile } from "./types";
 import { DEFAULT_FORMATTING } from "./types";
 import { formatLocalTime, humanizeEvent, parseHashtagLine, timeAgo } from "./utils/format";
-import { toLinkedInText } from "./utils/linkedin";
+import { composeHashtagLine, toLinkedInText } from "./utils/linkedin";
 import SubTabs from "./components/SubTabs";
 
 const VIEW_KEY = "li_agent_view";
@@ -430,7 +430,9 @@ export default function App() {
 
   const copyForLinkedIn = async () => {
     try {
-      await navigator.clipboard.writeText(toLinkedInText(edits.draft));
+      await navigator.clipboard.writeText(
+        toLinkedInText(composeHashtagLine(edits.draft, edits.tags)),
+      );
       notify("Copied — ready to paste into LinkedIn");
     } catch {
       notify("Clipboard unavailable", "error");

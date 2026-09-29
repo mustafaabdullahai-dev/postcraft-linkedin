@@ -177,3 +177,39 @@ async def test_linkedin_token_kept_when_not_expired(app_ctx):
         user, app_ctx.user_store
     )
     assert token == "valid-token"
+
+@pytest.mark.asyncio
+async def test_publish_recomposes_hashtag_line_from_the_edited_tags(app_ctx, monkeypatch):
+    """Editing the tag list must reach the published text.
+
+    The text is what LinkedIn receives, so a stale hashtag line left in the draft
+    must be replaced by the authoritative `hashtags` field — otherwise a manually
+    added tag never appears on the post.
+    """
+    from app.agents.nodes.content_nodes import publish_to_linkedin
+
+    captured: dict = {}
+
+    async def fake_publish(**kwargs):
+        captured.update(kwargs)
+        return {"post_id": "urn:li:share:1", "status": "PUBLISHED", "error": None}
+
+    monkeypatch.setattr(
+        app_ctx.node_context.linkedin_publisher, "publish_text_post", fake_publish
+    )
+
+    await publish_to_linkedin(
+        {
+            "user_approved": True,
+            "owner_id": "",
+            "edited_post": "Body copy about platform engineering.\n\n#OldTag #LegacyTag",
+            "hashtags": ["#OldTag", "#NewManualTag"],
+        },
+        ctx=app_ctx.node_context,
+    )
+
+    text = captured["text"]
+    assert "#NewManualTag" in text
+    assert "#LegacyTag" not in text
+    assert text.count("#OldTag") == 1
+    assert text.rstrip().endswith("#NewManualTag")

@@ -366,7 +366,14 @@ async def publish_to_linkedin(state: LinkedInPostState, ctx: NodeContext = None)
     if not state.get("user_approved"):
         raise PermissionError("Post must be manually approved before publishing.")
 
-    text = state.get("edited_post") or state.get("generated_post", "")
+    # Recompose the hashtag line from the authoritative `hashtags` field: a user
+    # can edit the tag list (HashtagDisplay → Save edits) without touching the
+    # draft text, and the text is what LinkedIn receives. Without this, manually
+    # added tags never reach the published post.
+    text = clean_post(
+        state.get("edited_post") or state.get("generated_post", ""),
+        state.get("hashtags", []),
+    )
     linkedin_user = state.get("linkedin_user") or {}
     access_token = linkedin_user.get("access_token", "") if isinstance(linkedin_user, dict) else ""
     person_urn = linkedin_user.get("urn", "") if isinstance(linkedin_user, dict) else ""

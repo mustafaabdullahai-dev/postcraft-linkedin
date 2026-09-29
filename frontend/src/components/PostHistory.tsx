@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PostFilters, PostRecord, StatusCounts } from "../types";
 import { api } from "../services/api";
 import { formatLocalTime } from "../utils/format";
-import { toLinkedInText } from "../utils/linkedin";
+import { composeHashtagLine, toLinkedInText } from "../utils/linkedin";
 import StatusBadge from "./StatusBadge";
 import Skeleton from "./Skeleton";
 
@@ -153,9 +153,12 @@ export default function PostHistory({ filters, reloadKey, selectedId, onSelect, 
   };
 
   const copyPost = async (rec: PostRecord) => {
-    // LinkedIn has no markdown renderer, so strip emphasis markers here too —
-    // matching what the API publishes. The stored post keeps its markdown.
-    const text = toLinkedInText(rec.final_post ?? rec.generated_post ?? "");
+    // Recompose the hashtag line from the record's tag list (a user may have
+    // edited the tags without touching the draft text), then flatten markdown
+    // the way LinkedIn needs it.
+    const text = toLinkedInText(
+      composeHashtagLine(rec.final_post ?? rec.generated_post ?? "", rec.hashtags ?? []),
+    );
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(rec.record_id);
