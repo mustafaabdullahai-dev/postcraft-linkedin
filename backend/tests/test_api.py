@@ -480,3 +480,80 @@ def test_date_range_export_insights_and_analytics(client: TestClient):
     assert refreshed.status_code == 200
     assert "likes" in refreshed.json()["analytics"]
     assert "fetched_at" in refreshed.json()["analytics"]
+
+def test_rework_does_not_demote_a_published_post(client: TestClient):
+    """A reworked live post stays PUBLISHED so the UI offers a revision.
+
+    Reproduces the reported bug: rework used to reset record_status to
+    READY_FOR_REVIEW, which flipped the UI to a plain publish — and that call
+    no-op'd because the post was already live, so the edits never went out.
+    """
+    headers = _guest(client)
+    rec = client.post(
+        "/api/posts/generate",
+        json={"user_query": "Platform engineering at scale for large teams"},
+        headers=headers,
+    ).json()
+    rid = rec["record_id"]
+
+    first = client.post(f"/api/posts/{rid}/approve", json={"approved": True}, headers=headers)
+    assert first.status_code == 200
+    assert first.json()["record_status"] == "PUBLISHED"
+    first_urn = first.json()["linkedin_post_id"]
+
+    reworked = client.post(
+        f"/api/posts/{rid}/rework",
+        json={
+            "text": "A fresh take on platform engineering at scale for large teams.",
+            "formatting": {},
+        },
+        headers=headers,
+    )
+    assert reworked.status_code == 200
+    body = reworked.json()
+    assert body["record_status"] == "PUBLISHED", "rework must not demote a live post"
+    assert body["publishing_status"] == "PUBLISHED"
+
+    # A revision republish must create a NEW post rather than reuse the old urn.
+    again = client.post(
+        f"/api/posts/{rid}/publish",
+        json={"approved": True, "revision": True},
+        headers=headers,
+    )
+    assert again.status_code == 200
+    assert again.json()["linkedin_post_id"] != first_urn
+
+
+def test_publish_is_a_noop_when_already_live_and_unchanged(client: TestClient):
+    headers = _guest(client)
+    rec = client.post(
+        "/api/posts/generate",
+        json={"user_query": "Observability for small engineering teams"},
+        headers=headers,
+    ).json()
+    rid = rec["record_id"]
+
+    first = client.post(f"/api/posts/{rid}/approve", json={"approved": True}, headers=headers).json()
+    again = client.post(
+        f"/api/posts/{rid}/publish",
+        json={"approved": True, "revision": False},
+        headers=headers,
+    ).json()
+    assert again["linkedin_post_id"] == first["linkedin_post_id"]
+
+
+def test_edited_since_publish_detects_later_edits():
+    from datetime import datetime, timedelta, timezone
+
+    from app.api.routes.posts import _edited_since_publish
+    from app.models.post import PostRecord
+
+    now = datetime.now(timezone.utc)
+    fresh = PostRecord(user_query="x", published_at=now, updated_at=now)
+    assert _edited_since_publish(fresh) is False
+
+    edited = PostRecord(user_query="x", published_at=now, updated_at=now + timedelta(seconds=30))
+    assert _edited_since_publish(edited) is True
+
+    never = PostRecord(user_query="x")
+    assert _edited_since_publish(never) is False

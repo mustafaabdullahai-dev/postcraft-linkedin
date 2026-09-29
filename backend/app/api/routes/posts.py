@@ -337,7 +337,11 @@ async def rework_post_route(
         rec.final_post = None
         rec.review_status = "READY_FOR_REVIEW"
         rec.generation_status = "GENERATED"
-        rec.record_status = "READY_FOR_REVIEW"
+        # Do NOT demote an already-published post. Its content has changed, but it
+        # is still live, so the UI must offer "Republish revision" (LinkedIn can't
+        # edit a live post) instead of a plain publish that would no-op.
+        if rec.record_status not in ("PUBLISHED", "FAILED"):
+            rec.record_status = "READY_FOR_REVIEW"
         rec.error = None
         rec.touch("REWORKED")
         return _flush(rec, request)
@@ -870,8 +874,8 @@ async def approve_post(
             state = await app_ctx.workflow.retry_publish(_state_from_record(rec), user=user)
         _apply_publish(rec, state)
         rec.final_post = rec.final_post or state.get("edited_post") or rec.generated_post
-        _mark_published(app_ctx, rec)
         rec.touch("APPROVED_PUBLISHED" if rec.publishing_status == "PUBLISHED" else "APPROVED_PUBLISH_FAILED")
+        _mark_published(app_ctx, rec)
         return _flush(rec, request)
     except HTTPException:
         raise
@@ -883,6 +887,18 @@ async def approve_post(
         rec.touch("APPROVAL_FAILED")
         _flush(rec, request)
         raise HTTPException(status_code=502, detail=f"Publish failed: {exc}")
+
+
+def _edited_since_publish(rec: PostRecord) -> bool:
+    """True when a record changed after it was published.
+
+    `touch()` bumps `updated_at` on every mutation, so an edit made after
+    publishing shows up as a gap over the small window publishing itself takes.
+    A live-but-changed post must go out again rather than no-op.
+    """
+    if rec.published_at is None or rec.updated_at is None:
+        return False
+    return (rec.updated_at - rec.published_at).total_seconds() > 1
 
 
 # ─── publish (retry-safe) ─────────────────────────────────────
@@ -902,12 +918,18 @@ async def publish_post(
             detail="Post must be manually approved before publishing.",
         )
 
-    if rec.publishing_status == "PUBLISHED" and not req.revision:
+    already_live = rec.publishing_status == "PUBLISHED" and bool(rec.linkedin_post_id)
+    # A live post whose content changed since publishing has to go out again
+    # (LinkedIn cannot edit a published post, so it becomes a new revision).
+    # Only a genuine retry — already live and unchanged — short-circuits.
+    revision = bool(req.revision) or (already_live and _edited_since_publish(rec))
+
+    if already_live and not revision:
         # Retry-safe no-op: already live on LinkedIn and nothing new to send.
         _mark_published(app_ctx, rec)
         return _flush(rec, request)
 
-    if req.revision:
+    if revision:
         # LinkedIn cannot edit a live ugcPost, so a revision goes out as a new
         # post. Clear the previous urn and stamps so the new post gets its own
         # published_at and engagement baseline instead of inheriting the old one.
@@ -918,8 +940,8 @@ async def publish_post(
 
     state = await app_ctx.workflow.retry_publish(_state_from_record(rec), user=user)
     _apply_publish(rec, state)
-    _mark_published(app_ctx, rec)
     rec.touch("PUBLISH_RETRY")
+    _mark_published(app_ctx, rec)
     return _flush(rec, request)
 
 
