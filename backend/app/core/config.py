@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = "openai/gpt-oss-120b"
+    # Output-token cap per call. Groq's free tier allows ~8k tokens/min for the
+    # whole org, so an 8192 request exhausts the budget on the first call and the
+    # pipeline 429s. Keep this comfortably below the org limit.
+    groq_max_completion_tokens: int = 3072
     # OpenRouter (OpenAI-compatible aggregator) — any model id, e.g. qwen/qwen3.8-27b
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"

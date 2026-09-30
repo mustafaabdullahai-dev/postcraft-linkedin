@@ -473,7 +473,13 @@ def get_text_provider(settings: Settings) -> TextModelProvider:
                 base_url=settings.groq_base_url,
                 model=settings.groq_model,
                 temperature=0.6,
-                model_kwargs={"max_completion_tokens": 8192},  # gpt-oss reasoning + strict json needs headroom
+                model_kwargs={"max_completion_tokens": int(settings.groq_max_completion_tokens)},
+                # Groq's free tier is capped at ~8k tokens/min for the whole org
+                # (identical for 120b/20b/qwen3.8), and the pipeline makes several
+                # calls in a row. Requesting 8192 per call instantly exhausts the
+                # budget and returns 429, so cap it well under the limit: posts
+                # target 700-1300 chars and gpt-oss reasoning needs a few hundred
+                # tokens, so 3072 is comfortable headroom.
             ),
             name=f"groq:{settings.groq_model}",
             structured_method=settings.structured_output_method,

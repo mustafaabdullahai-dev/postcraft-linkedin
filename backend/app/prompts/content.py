@@ -85,6 +85,11 @@ FORMATTING RULES:
   ONLY for that — no other bullet chars.
 - Use 3-7 emojis TOTAL across the whole post, sprinkled inline or at natural
   paragraph breaks. Never start a line with an emoji, never an all-emoji line.
+- Emoji budget includes EVERY emoji glyph. Keycap markers (1️⃣ 2️⃣ 3️⃣) each
+  count as one emoji, so never use more than 3 keycaps in a post.
+- If you number steps, put EACH step on its own line (one keycap per line).
+  Never inline several steps into one sentence: "1️⃣ a, 2️⃣ b, 3️⃣ c" is
+  rejected as a crammed list.
 - No section headers anywhere. No trailing "Hashtags:" section. Hashtags go ONLY
   in the `hashtags` field and as the FINAL line of full_post joined by spaces.
 - Short paragraphs (1-3 sentences). Scannable. Target 700-1300 characters.

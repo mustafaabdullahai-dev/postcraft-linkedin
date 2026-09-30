@@ -336,6 +336,7 @@ async def validate_content(state: LinkedInPostState, ctx: NodeContext = None) ->
         post=state.get("generated_post", ""),
         hashtags=state.get("hashtags", []),
         user_query=state["user_query"],
+        emojis_enabled=bool((state.get("formatting") or {}).get("emojis", True)),
     )
     status = "VALID" if result.valid else "INVALID"
     if not result.valid:
