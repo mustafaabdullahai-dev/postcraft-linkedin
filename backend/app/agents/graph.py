@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -109,8 +109,13 @@ class LinkedInWorkflow:
         record_id: str,
         seed: Optional[Dict[str, Any]] = None,
         user: Optional[LinkedInUser] = None,
+        on_event: Optional[Callable[[str, int], Awaitable[None]]] = None,
     ) -> Dict[str, Any]:
-        """Run the generation pipeline. Halts at the human-review interrupt."""
+        """Run the generation pipeline. Halts at the human-review interrupt.
+
+        `on_event(node, elapsed_ms)` is awaited after each node completes, so
+        callers can stream real progress instead of guessing with a timer.
+        """
         initial: Dict[str, Any] = {
             "user_query": user_query,
             "record_id": record_id,
@@ -129,11 +134,14 @@ class LinkedInWorkflow:
         ):
             updates.append(event)
             node = list(event.keys())[0] if event else None
-            logger.info(
-                "workflow update",
-                node=node,
-                elapsed_ms=round((asyncio.get_event_loop().time() - started) * 1000),
-            )
+            elapsed_ms = round((asyncio.get_event_loop().time() - started) * 1000)
+            logger.info("workflow update", node=node, elapsed_ms=elapsed_ms)
+            if on_event is not None and node:
+                try:
+                    await on_event(node, elapsed_ms)
+                except Exception:  # noqa: BLE001
+                    # Progress reporting must never break generation.
+                    logger.warning("progress callback failed", node=node)
 
         state = await self.graph.aget_state(self._config(record_id))
         return self._merge(state)

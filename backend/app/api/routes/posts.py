@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -7,8 +8,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
+from app.api.generate_stream import (
+    close_stream,
+    progress_stream,
+    publish,
+    stage_key_for,
+    stage_snapshot,
+)
 from app.core.abuse import ai_quota
 from app.core.auth import get_current_user
 from app.core.context import ApplicationContext
@@ -256,6 +264,88 @@ async def generate_post(
         record.touch("GENERATION_FAILED")
         _flush(record, request)
         raise HTTPException(status_code=502, detail=f"Generation failed: {exc}")
+
+
+@router.post("/generate/stream")
+async def generate_post_stream(
+    req: GenerateRequest,
+    request: Request,
+    user: LinkedInUser = Depends(ai_quota("generation")),
+) -> StreamingResponse:
+    """Generate a post, streaming real graph progress as server-sent events.
+
+    Emits, in order: one `progress` frame per completed graph node, then a
+    single terminal `done` (carrying the finished record) or `error` frame. The
+    non-streaming `/generate` stays authoritative for API clients; this exists
+    so the UI can show what is genuinely finished instead of a guessed timer.
+    """
+    app_ctx = ctx(request)
+    record = PostRecord(user_query=req.user_query, owner_id=user.user_id)
+    app_ctx.store.create(record)
+    logger.info("generation started", record_id=record.record_id, owner_id=user.user_id)
+
+    seed = _base_seed(app_ctx, req)
+    queue: asyncio.Queue = asyncio.Queue()
+    completed: set[str] = set()
+
+    async def on_event(node: str, elapsed_ms: int) -> None:
+        """Report a finished graph node, with a truthful checklist snapshot."""
+        completed.add(node)
+        publish(
+            queue,
+            "progress",
+            node=node,
+            stage=stage_key_for(node),
+            elapsed_ms=elapsed_ms,
+            snapshot=stage_snapshot(completed),
+        )
+
+    async def run() -> None:
+        try:
+            state = await app_ctx.workflow.run_generation(
+                req.user_query,
+                record.record_id,
+                user=user,
+                seed=seed or None,
+                on_event=on_event,
+            )
+            _apply_generated(record, state)
+            record.voice_profile_id = seed.get("voice_profile_id")
+            record.voice_profile_name = seed.get("voice_profile_name", "")
+            record.touch("GENERATED")
+            finished = _flush(record, request)
+            publish(
+                queue,
+                "done",
+                record=json.loads(finished.model_dump_json()),
+                snapshot=stage_snapshot(completed),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("generation failed", record_id=record.record_id, error=str(exc))
+            record.record_status = "FAILED"
+            record.error = str(exc)
+            record.touch("GENERATION_FAILED")
+            _flush(record, request)
+            publish(queue, "error", detail=f"Generation failed: {exc}")
+        finally:
+            close_stream(queue)
+
+    async def body():
+        task = asyncio.create_task(run())
+        try:
+            async for frame in progress_stream(queue):
+                yield frame
+        finally:
+            if not task.done():
+                task.cancel()
+            # Always release the worker so a disconnected client cannot leak it.
+            await asyncio.gather(task, return_exceptions=True)
+
+    return StreamingResponse(
+        body(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 # ─── batch generate (variations) ──────────────────────────────

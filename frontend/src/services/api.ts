@@ -37,6 +37,94 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type ProgressStage = { key: string; label: string; done: boolean; active: boolean };
+
+export type ProgressSnapshot = { stages: ProgressStage[]; active_index: number };
+
+export type ProgressFrame = {
+  node: string;
+  stage: string | null;
+  elapsed_ms: number;
+  snapshot: ProgressSnapshot;
+};
+
+/**
+ * Consume the SSE generation stream.
+ *
+ * `EventSource` is unusable here: it cannot POST a body and cannot send the
+ * Authorization header this API requires, so the frames are read off a fetch
+ * body stream instead. `onProgress` receives every real node completion; the
+ * promise settles with the finished record.
+ */
+async function streamGeneration(
+  path: string,
+  payload: Record<string, unknown>,
+  onProgress: (frame: ProgressFrame) => void,
+): Promise<PostRecord> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok || !res.body) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      message = body.detail ?? message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let event = "message";
+  let failure: string | null = null;
+  let record: PostRecord | null = null;
+
+  const handle = (rawEvent: string, data: string) => {
+    if (rawEvent === "progress") {
+      onProgress(JSON.parse(data) as ProgressFrame);
+    } else if (rawEvent === "error") {
+      failure = (JSON.parse(data) as { detail?: string }).detail ?? "Generation failed";
+    } else if (rawEvent === "done") {
+      record = (JSON.parse(data) as { record: PostRecord }).record;
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line.
+    let split = buffer.indexOf("\n\n");
+    while (split !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      let payload = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) payload += line.slice(5).trim();
+      }
+      if (payload) handle(event, payload);
+      event = "message";
+      split = buffer.indexOf("\n\n");
+    }
+  }
+
+  if (failure) throw new Error(failure);
+  if (!record) throw new Error("Generation stream ended without a result");
+  return record;
+}
+
 export const api = {
   generate: (userQuery: string, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string, includeImage = true) =>
     request<PostRecord>("/posts/generate", {
@@ -51,6 +139,29 @@ export const api = {
         include_image: includeImage,
       }),
     }),
+
+  generateStream: (
+    userQuery: string,
+    filters: PostFilters,
+    language: string,
+    formatting: FormattingPrefs | undefined,
+    voiceProfileId: string | undefined,
+    includeImage: boolean,
+    onProgress: (frame: ProgressFrame) => void,
+  ) =>
+    streamGeneration(
+      "/posts/generate/stream",
+      {
+        user_query: userQuery,
+        priority: filters.priority ?? undefined,
+        post_type: filters.post_type ?? undefined,
+        language,
+        formatting,
+        voice_profile_id: voiceProfileId ?? undefined,
+        include_image: includeImage,
+      },
+      onProgress,
+    ),
 
   batchGenerate: (userQuery: string, variations: number, filters: PostFilters = {}, language = "English", formatting?: FormattingPrefs, voiceProfileId?: string, includeImage = true) =>
     request<{ items: PostRecord[] }>("/posts/batch-generate", {

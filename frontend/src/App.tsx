@@ -21,7 +21,7 @@ import SectionNav, { useActiveSection, type SectionRef } from "./components/Sect
 import VariationPicker from "./components/VariationPicker";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useReveal } from "./hooks/useReveal";
-import { api } from "./services/api";
+import { api, type ProgressSnapshot } from "./services/api";
 import { exchangeAuthCode, logout, me } from "./services/auth";
 import type { FormattingPrefs, GuidelineGroup, PostFilters, PostRecord, StatusCounts, User, VoiceProfile } from "./types";
 import { DEFAULT_FORMATTING } from "./types";
@@ -107,6 +107,8 @@ export default function App() {
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [query, setQuery] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
+  const [progressElapsed, setProgressElapsed] = useState(0);
   const [active, setActive] = useState<PostRecord | null>(null);
   const [edits, setEdits] = useState({ draft: "", tags: [] as string[], dirty: false });
   const [tagCandidates, setTagCandidates] = useState<string[]>([]);
@@ -311,7 +313,18 @@ export default function App() {
       return;
     }
     void api
-      .generate(raw, filters, language, formatting, voiceId || undefined, includeImage)
+      .generateStream(
+        raw,
+        filters,
+        language,
+        formatting,
+        voiceId || undefined,
+        includeImage,
+        (frame) => {
+          setProgress(frame.snapshot);
+          setProgressElapsed(frame.elapsed_ms);
+        },
+      )
       .then((rec) => {
         setQuery("");
         selectRecord(rec);
@@ -322,7 +335,11 @@ export default function App() {
         setError(e.message);
         notify(e.message, "error");
       })
-      .finally(() => setGenerating(false));
+      .finally(() => {
+        setGenerating(false);
+        setProgress(null);
+        setProgressElapsed(0);
+      });
   };
 
   const handleSave = () => {
@@ -612,7 +629,9 @@ export default function App() {
 
           {/* ─── workspace: categorized review flow ─────────── */}
           <div className="side-scroll relative order-1 min-w-0 space-y-5 overflow-visible lg:order-none lg:h-full lg:overflow-y-auto">
-            {generating && <GeneratingOverlay />}
+            {generating && (
+              <GeneratingOverlay snapshot={progress} elapsedMs={progressElapsed} />
+            )}
             {error && (
               <div
                 className="rounded-xl border px-4 py-2.5 text-sm font-medium"

@@ -1,21 +1,27 @@
-import { useEffect, useState } from "react";
+import type { ProgressSnapshot } from "../services/api";
 
-const STEPS = [
-  "Shaping your idea into a clear brief",
-  "Writing the post copy",
-  "Checking quality & the hook",
-  "Generating the visual",
-  "Preparing your review",
+const FALLBACK_STAGES = [
+  { key: "brief", label: "Shaping your idea into a clear brief", done: false, active: true },
+  { key: "copy", label: "Writing the post copy", done: false, active: false },
+  { key: "extras", label: "Adding hashtags and the image brief", done: false, active: false },
+  { key: "visual", label: "Generating the visual", done: false, active: false },
+  { key: "quality", label: "Checking quality & the hook", done: false, active: false },
+  { key: "review", label: "Preparing your review", done: false, active: false },
 ];
 
-export default function GeneratingOverlay() {
-  const [step, setStep] = useState(0);
-
-  useEffect(() => {
-    setStep(0);
-    const id = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length)), 1400);
-    return () => clearInterval(id);
-  }, []);
+export default function GeneratingOverlay({
+  snapshot,
+  elapsedMs = 0,
+}: {
+  snapshot: ProgressSnapshot | null;
+  elapsedMs?: number;
+}) {
+  // Until the first frame lands there is nothing truthful to show yet, so the
+  // checklist stays neutral instead of ticking itself along on a timer.
+  const stages = snapshot?.stages?.length ? snapshot.stages : FALLBACK_STAGES;
+  const finished = stages.filter((s) => s.done).length;
+  const seconds = Math.round(elapsedMs / 1000);
+  const settled = stages.length > 0 && finished === stages.length;
 
   return (
     <div
@@ -55,40 +61,52 @@ export default function GeneratingOverlay() {
 
         <div>
           <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-            Generating your post…
+            {settled ? "Finishing up…" : "Generating your post…"}
           </p>
-          <p className="hint mt-1">Usually takes ~20 seconds — your draft lands here when it's ready.</p>
+          <p className="hint mt-1">
+            {seconds > 0 ? `${seconds}s elapsed · ` : ""}
+            {finished}/{stages.length} steps done — keep this tab open.
+          </p>
+        </div>
+
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full"
+          style={{ background: "var(--line)" }}
+        >
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${stages.length ? (finished / stages.length) * 100 : 4}%`,
+              background: "var(--accent)",
+            }}
+          />
         </div>
 
         <ul className="w-full space-y-2 text-left">
-          {STEPS.map((label, i) => {
-            const done = i < step;
-            const active = i === step;
-            return (
-              <li
-                key={label}
-                className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-300 ${
-                  active ? "border-[var(--accent-soft)] bg-[var(--surface-2)]" : done ? "" : "opacity-45"
-                }`}
+          {stages.map((s, i) => (
+            <li
+              key={s.key}
+              className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-300 ${
+                s.active ? "border-[var(--accent-soft)] bg-[var(--surface-2)]" : s.done ? "" : "opacity-45"
+              }`}
+              style={{
+                borderColor: s.active ? "var(--accent-soft)" : s.done ? "var(--line-2)" : "var(--line)",
+                color: s.active ? "var(--ink)" : s.done ? "var(--muted)" : "var(--faint)",
+              }}
+            >
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
                 style={{
-                  borderColor: active ? "var(--accent-soft)" : done ? "var(--line-2)" : "var(--line)",
-                  color: active ? "var(--ink)" : done ? "var(--muted)" : "var(--faint)",
+                  background: s.done ? "var(--ok)" : s.active ? "var(--accent-soft)" : "var(--surface-2)",
+                  color: s.done ? "#fff" : s.active ? "var(--accent)" : "var(--faint)",
                 }}
               >
-                <span
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-                  style={{
-                    background: done ? "var(--ok)" : active ? "var(--accent-soft)" : "var(--surface-2)",
-                    color: done ? "#fff" : active ? "var(--accent)" : "var(--faint)",
-                  }}
-                >
-                  {done ? "✓" : active ? "•" : i + 1}
-                </span>
-                {label}
-                {active && <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />}
-              </li>
-            );
-          })}
+                {s.done ? "✓" : s.active ? "•" : i + 1}
+              </span>
+              {s.label}
+              {s.active && <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />}
+            </li>
+          ))}
         </ul>
       </div>
     </div>
