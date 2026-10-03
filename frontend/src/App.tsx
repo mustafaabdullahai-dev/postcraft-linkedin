@@ -453,10 +453,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       {/* ─── top bar ─────────────────────────────────────────── */}
-      <header className="u-header sticky top-0 z-40 border-b" style={{ borderColor: "var(--line)" }}>
-        <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-3 px-3 py-1.5 sm:px-5 sm:py-2">
+      <header className="u-header sticky top-0 z-40 shrink-0 border-b" style={{ borderColor: "var(--line)" }}>
+        <div className="flex w-full items-center justify-between gap-3 px-3 py-1.5 sm:px-5 sm:py-2">
           <button
             type="button"
             onClick={goHome}
@@ -489,7 +489,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[96rem] px-3 pb-28 pt-5 sm:px-5 sm:pb-32 sm:pt-6 lg:h-[calc(100vh-3.375rem)] lg:overflow-hidden lg:py-6">
+      <main className="flex-1 px-3 pb-28 pt-5 sm:px-5 sm:pb-32 sm:pt-6 lg:min-h-0 lg:overflow-hidden lg:py-6">
         <div className="grid gap-6 lg:h-full lg:grid-cols-[256px_1fr] lg:items-stretch">
           {/* ─── sidebar: workspace nav + account ────────────── */}
           <nav
@@ -1036,7 +1036,7 @@ export default function App() {
         style={{ borderColor: "var(--line)", background: "var(--header-bg)", backdropFilter: "blur(8px)" }}
       >
         {!selected && (
-          <div className="mx-auto mb-2 grid max-w-7xl grid-cols-3 gap-1.5">
+          <div className="mb-2 grid grid-cols-3 gap-1.5">
             {(
               [
                 { id: "create", label: "Create" },
@@ -1068,7 +1068,7 @@ export default function App() {
             })}
           </div>
         )}
-        <div className="mx-auto flex max-w-7xl items-center gap-2">
+        <div className="flex items-center gap-2">
           {selected && !published && !edits.dirty && selected.approval_status !== "APPROVED" && (
             <button type="button" onClick={() => approve(false)} disabled={busy || generating} className="btn-danger shrink-0 px-3 py-3 text-sm" aria-label="Reject post">
               ✕
