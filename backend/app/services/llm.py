@@ -21,7 +21,80 @@ T = TypeVar("T", bound=BaseModel)
 # the failure is a per-request coin flip, not a bad prompt or schema.
 STRUCTURED_ATTEMPTS = 3
 STRUCTURED_RETRY_BACKOFF_S = 0.6
+
+# Rate limits are retried separately from the structured-output loop above.
+# Groq's free tier caps the whole org at ~8k tokens/min, while one generate
+# pipeline spends ~12k across six sequential calls, so a perfectly healthy
+# request can 429 on the fifth node. The provider usually reports how long to
+# wait ("Please try again in 3.05s"), so honour that when present.
+RATE_LIMIT_ATTEMPTS = 5
+RATE_LIMIT_BACKOFF_S = 2.0
+RATE_LIMIT_BACKOFF_MAX_S = 30.0
+
 _JSON_DELIMITERS = ",}]:"
+
+
+def _retry_after_seconds(exc: BaseException) -> Optional[float]:
+    """Pull the provider's own retry hint out of a rate-limit error."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers:
+        for key in ("retry-after", "x-ratelimit-reset-requests", "retry-after-ms"):
+            raw = headers.get(key)
+            if not raw:
+                continue
+            try:
+                seconds = float(raw)
+            except (TypeError, ValueError):
+                continue
+            # `retry-after-ms` and reset headers are sometimes milliseconds.
+            if key.endswith("-ms") or seconds > RATE_LIMIT_BACKOFF_MAX_S * 1000:
+                seconds /= 1000
+            return max(0.0, min(seconds, RATE_LIMIT_BACKOFF_MAX_S))
+    match = re.search(r"try again in ([\d.]+)\s*s", str(exc), re.IGNORECASE)
+    if match:
+        return max(0.0, min(float(match.group(1)), RATE_LIMIT_BACKOFF_MAX_S))
+    return None
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    if type(exc).__name__ in {"RateLimitError", "TooManyRequests"}:
+        return True
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return True
+    text = str(exc).lower()
+    return "429" in text and "rate limit" in text
+
+
+async def _with_rate_limit_retry(operation: Callable[[], Any], label: str) -> Any:
+    """Await `operation()`, retrying provider rate limits with backoff.
+
+    The backend's own per-IP limiter cannot help here: the 429 comes from the
+    upstream model provider and is billed to the whole organisation, so it must
+    be absorbed by waiting rather than by shedding load.
+    """
+    delay = RATE_LIMIT_BACKOFF_S
+    for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
+        try:
+            return await operation()
+        except Exception as exc:
+            if not _is_rate_limit_error(exc) or attempt == RATE_LIMIT_ATTEMPTS:
+                raise
+            wait = _retry_after_seconds(exc)
+            if wait is None:
+                wait = min(delay, RATE_LIMIT_BACKOFF_MAX_S)
+                delay *= 2
+            logger.warning(
+                "provider rate limited, backing off",
+                call=label,
+                attempt=attempt,
+                attempts=RATE_LIMIT_ATTEMPTS,
+                wait_s=round(wait, 2),
+            )
+            await asyncio.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 class _SafeFormatter(string.Formatter):
@@ -190,7 +263,9 @@ class LangChainTextProvider(TextModelProvider):
         chain = self._structured_chain(schema)
 
         for attempt in range(1, STRUCTURED_ATTEMPTS + 1):
-            outcome = await chain.ainvoke(messages)
+            outcome = await _with_rate_limit_retry(
+                lambda: chain.ainvoke(messages), f"structured:{schema.__name__}"
+            )
             parsed = outcome.get("parsed")
             if isinstance(parsed, schema):
                 return parsed
@@ -225,7 +300,9 @@ class LangChainTextProvider(TextModelProvider):
         from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [SystemMessage(content=system), HumanMessage(content=human)]
-        msg = await self._model.ainvoke(messages)
+        msg = await _with_rate_limit_retry(
+            lambda: self._model.ainvoke(messages), "complete"
+        )
         return msg.content if hasattr(msg, "content") else str(msg)
 
 
