@@ -27,6 +27,12 @@ app? "Continue as guest" unlocks the full flow in demo mode.
 
 ## Features
 
+- **Correct text on generated images** — image models cannot spell (diffusion and
+  video generators treat letterforms as texture, so a prompt asking for "AI AGENTS"
+  yields something letter-shaped, and spelling it out character-by-character just
+  trades a misspelling for stray hyphens). So PostCraft never asks: the artwork is
+  generated blank and the headline is drawn afterwards with Pillow, which is exact
+  by construction in any script. See [Image text rendering](#image-text-rendering).
 - **Multi-user accounts** — **"Sign in with LinkedIn"** behaves like Login-with-
   Google (official OIDC `userinfo` endpoint, `openid/profile/email` scopes, one
   click → consent → back in the app). No credentials? **"Continue as guest"**
@@ -81,10 +87,12 @@ app? "Continue as guest" unlocks the full flow in demo mode.
   selected via `TEXT_PROVIDER`: **Groq** (**`openai/gpt-oss-120b`**, default — fast,
   reasoning-capable, strict `json_schema` structured output), Qwen (`qwen-flash`),
   OpenRouter, or a deterministic offline **mock**. `auto` picks the first available.
-- **AI image generation** — **Qwen Model Studio** (`wan2.2-t2i-flash`, default —
-  ~7s/image via DashScope) with automatic failover to **Gemini Flash Image**
-  (native `gemini-3.1-flash-image`, needs Google AI billing) → OpenRouter → an SVG
-  mock for keyless demos. Pick the provider with `IMAGE_PROVIDER`.
+- **AI image generation** — **Qwen Model Studio** (`qwen-image-2.0-pro`, default,
+  via DashScope `multimodal-generation`) with automatic failover to **Gemini Flash
+  Image** (native `gemini-3.1-flash-image`, needs Google AI billing) → OpenRouter →
+  an SVG mock for keyless demos. Pick the provider with `IMAGE_PROVIDER`. Use a
+  Qwen-Image model rather than a Wan one — Wan is video-generation weights and
+  renders lettering as texture.
 - **Export** — download the whole library (owner-scoped) as **JSON, CSV or
   Markdown** via `/api/posts/export`.
 - **Multilingual** — 100+ language picker (searchable) plus free-text custom
@@ -152,7 +160,7 @@ pip install -r requirements.txt
 
 cp .env.example .env                 # paste GROQ, QWEN, GEMINI, LINKEDIN creds as needed
 
-uvicorn app.main:app --reload --port 8001
+.venv/bin/python -m uvicorn app.main:app --reload --port 8001
 ```
 
 Without any credentials the app runs fully in **mock + dry-run** mode (health endpoint reports the live providers).
@@ -167,7 +175,54 @@ npm run dev                          # http://localhost:5174 (proxies /api + /up
 
 Override with `VITE_DEV_PORT` / `VITE_PROXY_TARGET` if needed.
 
-### 3. Verify
+### 3. Exposing it publicly (ngrok)
+
+One tunnel fronts the Vite dev server, which already proxies `/api` and
+`/uploads` to the backend — so the backend does **not** need its own tunnel.
+
+```bash
+# 1. backend  (terminal 1)
+cd backend
+.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+
+# 2. frontend (terminal 2)
+cd frontend
+npm run dev
+
+# 3. tunnel   (terminal 3)
+ngrok http 5174 --url https://your-domain.ngrok-free.dev
+```
+
+Then set the same origin in `backend/.env` so CORS and the OAuth post-login
+redirect agree with the tunnel:
+
+```dotenv
+FRONTEND_URL=https://your-domain.ngrok-free.dev
+CORS_ORIGINS=https://your-domain.ngrok-free.dev,http://localhost:5174,http://127.0.0.1:5174
+```
+
+`vite.config.ts` already allows `*.ngrok-free.dev`, `*.ngrok-free.app` and
+`*.trycloudflare.com` as dev hosts.
+
+To run the three processes detached instead of in separate terminals:
+
+```bash
+cd backend  && setsid nohup .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 </dev/null >backend.log 2>&1 &
+cd frontend && setsid nohup npm run dev                                    </dev/null >vite.log    2>&1 &
+cd frontend && setsid nohup ngrok http 5174 --url https://your-domain.ngrok-free.dev --log=stdout </dev/null >ngrok.log 2>&1 &
+```
+
+> **If the tunnel will not connect** and the log says
+> `dial tcp [2406:...]:443: connect: network is unreachable` or
+> `lookup connect.ngrok-agent.com ... server misbehaving`, the agent is picking
+> an IPv6 address on a host that has no IPv6 route. Pin ngrok to IPv4:
+>
+> ```bash
+> echo '52.220.69.60  connect.ngrok-agent.com' | sudo tee -a /etc/hosts
+> echo '52.220.126.110 tunnel.ngrok.com'      | sudo tee -a /etc/hosts
+> ```
+
+### 4. Verify
 
 ```bash
 curl http://localhost:8001/api/health
@@ -181,11 +236,51 @@ curl -X POST http://localhost:8001/api/posts/generate \
 
 | Text (`TEXT_PROVIDER`) | Image (`IMAGE_PROVIDER`) |
 | --- | --- |
-| `groq` — `openai/gpt-oss-120b` (default) | `qwen` — `wan2.2-t2i-flash` (default) |
+| `groq` — `openai/gpt-oss-120b` (default) | `qwen` — `qwen-image-2.0-pro` (default) |
 | `qwen` — `qwen-flash` (DashScope) | `gemini` — `gemini-3.1-flash-image` (needs billing) |
 | `openrouter` — any supported model | `openrouter` — e.g. gemini image |
 | `mock` — offline demo | `mock` — offline SVG demo |
 | `auto` — first available | `auto` — gemini → openrouter → qwen → mock |
+
+Use a **Qwen-Image** model (`qwen-image-2.0-pro`, `qwen-image-2.0`, …) rather
+than a Wan model (`wan2.2-t2i-flash`). Wan is video-generation weights and
+renders lettering as texture. There is no `2.1` release — Alibaba ships 2.0
+and 3.0. Qwen-Image ignores the OpenAI-compatible `/images/generations` route
+and answers on DashScope's `multimodal-generation` endpoint, which the provider
+handles for you.
+
+## Image text rendering
+
+Image models cannot reliably spell. Diffusion- and video-based generators treat
+letterforms as texture, so a prompt asking for a headline produces something
+letter-shaped rather than the word, and asking for it character-by-character
+(`"A-I  A-G-E-N-T-S"`) mostly trades a misspelling for stray hyphens. No prompt
+phrasing fixes this.
+
+PostCraft therefore never delegates lettering to the image model:
+
+1. The concept LLM returns `image_prompt` describing a **text-free** visual with
+   deliberate empty space, plus a separate `overlay_text` / `overlay_placement`
+   holding the exact headline.
+2. The image is generated with no lettering.
+3. `app/services/image_overlay.py` draws the headline onto the PNG with Pillow.
+
+Because the text is rendered by a real font rasteriser rather than sampled from a
+diffusion prior, it is **exact by construction** — no prompt tuning, no retry, no
+model upgrade. The overlay also picks the font per script (Noto Naskh Arabic,
+Noto Sans Hebrew/Devanagari/Bengali/Tamil, Noto Sans CJK, Liberation Sans for
+Latin) and Pillow here is built with **raqm**, so complex scripts get real
+ligatures and bidi rather than disconnected, reversed letterforms.
+
+It degrades safely: undecodable image bytes or a font that will not load returns
+the original image untouched, so a typography problem can never fail generation.
+
+Two consequences worth knowing:
+
+- The artwork arrives deliberately blank where the headline sits. That is the
+  cost of correct spelling.
+- `overlay_text` is the single source of truth for what appears on the image.
+  Nothing asks the model to reproduce it.
 
 ## Demo without API keys
 
@@ -323,12 +418,21 @@ With `GOOGLE_SHEETS_DRY_RUN=true` (default) every event still lands in `backend/
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # 61 tests, runs offline (mock providers)
+cd backend && .venv/bin/python -m pytest -q     # 117 tests, runs offline (mock providers)
 .venv/bin/ruff check app tests                  # lint (same rule set as CI)
 ```
 
 CI (`.github/workflows/ci.yml`) runs both jobs on every push/PR:
 backend **ruff lint + pytest** and frontend **typecheck + build** (`tsc && vite build`).
+
+Notable suites:
+
+| File | Covers |
+| --- | --- |
+| `tests/test_image_overlay.py` | overlay rendering: per-script glyph coverage, determinism, placement, malformed input |
+| `tests/test_llm_retry.py` | retry of rate limits *and* output truncated before a valid document |
+| `tests/test_llm_structured.py` | repair of unparseable tool-call arguments |
+| `tests/test_emoji_count.py` | keycap/emoji counting and numbered-list structure rules |
 
 ## Production notes
 
@@ -342,5 +446,17 @@ backend **ruff lint + pytest** and frontend **typecheck + build** (`tsc && vite 
   FastAPI or nginx and proxy those two paths.
 - Always set `ENVIRONMENT=production` in a real deployment and read
   `backend/app/core/config.py` for the supported settings.
+- `groq_max_completion_tokens` (default 4096) covers reasoning **and** visible
+  output. `groq_reasoning_effort` (default `low`) bounds how much the model thinks
+  before answering; leaving it unset lets the provider default to its most verbose
+  setting, which previously consumed the entire budget and failed schema validation
+  as an unretryable 400. Raise it to `"medium"` if draft quality looks shallow.
+- The overlay renders with system fonts, so a deployment image needs a font
+  package (`fonts-liberation`, `fonts-noto-core`, `fonts-noto-cjk`). Without them
+  the overlay logs a warning and returns the image unlabelled rather than failing.
+- Qwen-Image ignores the OpenAI-compatible `/images/generations` route; the
+  provider calls DashScope's `multimodal-generation` endpoint and falls back to
+  `image-synthesis` for Wan models. `IMAGE_SIZE` must stay within 512×512–2048×2048
+  for `qwen-image-2.0*`; base `qwen-image` only accepts a fixed size list.
 - **Never commit `.env` or `backend/data/`** — they hold credentials, user records,
   posts and uploads.
