@@ -20,6 +20,7 @@ T = TypeVar("T", bound=BaseModel)
 # A provider that emits unusable structured output is retried before giving up:
 # the failure is a per-request coin flip, not a bad prompt or schema.
 STRUCTURED_ATTEMPTS = 3
+TRUNCATION_BACKOFF_S = 2.0
 STRUCTURED_RETRY_BACKOFF_S = 0.6
 
 # Rate limits are retried separately from the structured-output loop above.
@@ -56,6 +57,16 @@ def _retry_after_seconds(exc: BaseException) -> Optional[float]:
     return None
 
 
+def _supports_reasoning_effort(model: str) -> bool:
+    """Whether the model accepts the `reasoning_effort` parameter.
+
+    Groq rejects unknown parameters on models that do not reason, so the knob
+    must only be sent to families known to support it.
+    """
+    name = (model or "").lower()
+    return any(marker in name for marker in ("gpt-oss", "qwen3", "deepseek-r1", "kimi-k2"))
+
+
 def _is_rate_limit_error(exc: BaseException) -> bool:
     if type(exc).__name__ in {"RateLimitError", "TooManyRequests"}:
         return True
@@ -68,31 +79,63 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
     return "429" in text and "rate limit" in text
 
 
-async def _with_rate_limit_retry(operation: Callable[[], Any], label: str) -> Any:
-    """Await `operation()`, retrying provider rate limits with backoff.
+def _is_truncation_error(exc: BaseException) -> bool:
+    """Provider stopped generating before the structured document was complete.
 
-    The backend's own per-IP limiter cannot help here: the 429 comes from the
-    upstream model provider and is billed to the whole organisation, so it must
-    be absorbed by waiting rather than by shedding load.
+    Surfaces as an HTTP 400 rather than a rate limit, so without this it escapes
+    the retry loop and surfaces to the user as a hard generation failure. The
+    cause is transient in practice: the same request can come back shorter.
+    """
+    text = str(exc).lower()
+    return (
+        "json_validate_failed" in text
+        or "max completion tokens reached" in text
+        or "before generating a valid document" in text
+    )
+
+
+async def _with_rate_limit_retry(operation: Callable[[], Any], label: str) -> Any:
+    """Await `operation()`, retrying transient provider failures with backoff.
+
+    Covers two distinct upstream faults that neither the backend's per-IP limiter
+    nor the structured-output attempt loop can absorb:
+
+    - rate limits, which are billed to the whole organisation and so must be
+      waited out rather than shed;
+    - output truncated before a valid document was produced, which clears on a
+      retry that happens to finish inside the token budget.
     """
     delay = RATE_LIMIT_BACKOFF_S
+    truncation_delay = TRUNCATION_BACKOFF_S
     for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
         try:
             return await operation()
         except Exception as exc:
-            if not _is_rate_limit_error(exc) or attempt == RATE_LIMIT_ATTEMPTS:
+            truncated = _is_truncation_error(exc)
+            if not (truncated or _is_rate_limit_error(exc)) or attempt == RATE_LIMIT_ATTEMPTS:
                 raise
-            wait = _retry_after_seconds(exc)
-            if wait is None:
-                wait = min(delay, RATE_LIMIT_BACKOFF_MAX_S)
-                delay *= 2
-            logger.warning(
-                "provider rate limited, backing off",
-                call=label,
-                attempt=attempt,
-                attempts=RATE_LIMIT_ATTEMPTS,
-                wait_s=round(wait, 2),
-            )
+            if truncated:
+                wait = min(truncation_delay, RATE_LIMIT_BACKOFF_MAX_S)
+                truncation_delay *= 2
+                logger.warning(
+                    "provider truncated structured output, retrying",
+                    call=label,
+                    attempt=attempt,
+                    attempts=RATE_LIMIT_ATTEMPTS,
+                    wait_s=round(wait, 2),
+                )
+            else:
+                wait = _retry_after_seconds(exc)
+                if wait is None:
+                    wait = min(delay, RATE_LIMIT_BACKOFF_MAX_S)
+                    delay *= 2
+                logger.warning(
+                    "provider rate limited, backing off",
+                    call=label,
+                    attempt=attempt,
+                    attempts=RATE_LIMIT_ATTEMPTS,
+                    wait_s=round(wait, 2),
+                )
             await asyncio.sleep(wait)
     raise RuntimeError("unreachable")
 
@@ -544,19 +587,38 @@ def get_text_provider(settings: Settings) -> TextModelProvider:
             return None
         from langchain_openai import ChatOpenAI
 
+        # `max_completion_tokens` covers reasoning plus visible output, which is
+        # what a reasoning model needs. LangChain exposes only `max_tokens`,
+        # which some providers count *excluding* reasoning tokens, so passing the
+        # ceiling via model_kwargs is deliberate despite the warning it emits.
+        model_kwargs: dict = {
+            "max_completion_tokens": int(settings.groq_max_completion_tokens)
+        }
+        # A reasoning model spends part of its output budget thinking before it
+        # writes anything. Left at the provider default it can consume the whole
+        # budget and return a truncated document, which fails schema validation
+        # as an unretryable 400 rather than as a rate limit.
+        effort = (settings.groq_reasoning_effort or "").strip().lower()
+        reasoning_effort = (
+            effort
+            if effort in {"low", "medium", "high"}
+            and _supports_reasoning_effort(settings.groq_model)
+            else None
+        )
+
         return LangChainTextProvider(
             ChatOpenAI(
                 api_key=settings.groq_api_key,
                 base_url=settings.groq_base_url,
                 model=settings.groq_model,
                 temperature=0.6,
-                model_kwargs={"max_completion_tokens": int(settings.groq_max_completion_tokens)},
+                reasoning_effort=reasoning_effort,
+                model_kwargs=model_kwargs,
                 # Groq's free tier is capped at ~8k tokens/min for the whole org
                 # (identical for 120b/20b/qwen3.8), and the pipeline makes several
-                # calls in a row. Requesting 8192 per call instantly exhausts the
-                # budget and returns 429, so cap it well under the limit: posts
-                # target 700-1300 chars and gpt-oss reasoning needs a few hundred
-                # tokens, so 3072 is comfortable headroom.
+                # calls in a row. The cap above is a ceiling rather than a
+                # reservation, so it only spends tokens the model actually uses;
+                # bounding reasoning effort is what keeps that usage small.
             ),
             name=f"groq:{settings.groq_model}",
             structured_method=settings.structured_output_method,
