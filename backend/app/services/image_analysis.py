@@ -47,6 +47,12 @@ RULES:
   unprofessional or low-quality look, or sensitive content.
 - "issues": at most 4 short, concrete bullets (empty list when PASSED).
 - Judge only what is visible; never invent problems.
+- Letterspaced or hyphen-separated lettering (e.g. "A-I  A-G-E-N-T-S" rendered
+  as AGENTS) is a deliberate technique, not an error. Only flag it when the
+  resulting word is still wrong once the spacing is mentally closed up, or when
+  the hyphens are meant to be visible punctuation and look like an accident.
+- Correct words in a non-Latin script are never gibberish; do not flag a script
+  simply because it is not Latin.
 """
 )
 

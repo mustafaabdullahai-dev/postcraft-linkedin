@@ -42,6 +42,43 @@ hashtag_prompt = ChatPromptTemplate.from_messages(
 HashtagSchema = HashtagOutput
 
 # ── Image prompt ──────────────────────────────────────────────
+# Shared by the initial concept and the regeneration concept. Both must enforce
+# identical text rendering rules, otherwise a regenerated image silently loses
+# the spelling guarantees the first one had.
+TEXT_RENDERING_RULES = """HOW TO WRITE TEXT INTO THE IMAGE PROMPT (critical — follow exactly):
+
+These rules govern how you must WRITE the `image_prompt` field itself, not how
+you describe the topic. Image models render text unreliably unless the prompt
+makes the characters unambiguous.
+
+1. Separate the text from the visual description, and put the exact text in
+   quotation marks or ALL CAPS so the model can tell lettering apart from
+   scene description.
+   • Good: A clean, modern technology logo. The image features a sleek digital
+     brain icon. Below the icon, the literal text "AI AGENTS" must be cleanly
+     printed in a bold, white sans-serif font.
+   • Bad: A logo about AI agents with some text.
+
+2. For words that image models frequently misread, force the model to attend to
+   the individual characters by spelling them out in the prompt.
+   • Good: A neon sign on a dark wall that reads "A-I  A-G-E-N-T-S".
+   • Use this for acronym-like or invented words (AI, AGENTS, SaaS, Kubernetes,
+     MLOps) and for any word in a non-Latin script the model is likely to
+     garble. Do NOT spell out ordinary English words — it makes them worse.
+
+3. State the text's placement, font, colour and size explicitly ("bottom
+   centre", "bold white sans-serif", "large, filling the lower third"), and say
+   it must be printed cleanly and legibly.
+
+4. Repeat the required language explicitly when the image carries any text.
+
+5. Prefer an entirely text-free visual whenever the words add no topical
+   meaning. Text is a liability: only spend it when it carries the concept.
+
+6. In `negative_prompt`, always exclude stray hyphens, letter-spacing artifacts
+   and leftover scaffolding from spelled-out text, plus misspelled, truncated,
+   duplicated or gibberish lettering and any text in the wrong language."""
+
 IMAGE_PROMPT_SYSTEM = """You design a UNIQUE image concept for a LinkedIn post image.
 
 Every call MUST produce a NEW, distinct visual concept crafted for THIS specific
@@ -65,9 +102,8 @@ TEXT-IN-IMAGE RULE (critical):
 - Every visible word must be written CORRECTLY, completely and in the user's
   chosen language (its real script). No gibberish, no misspelled words, no
   English text when another language is requested, no mixed/wrong scripts.
-- Prefer a clean visual with little or no text; only include text when it clearly
-  adds topical meaning. If the image model is unlikely to spell it correctly,
-  lean toward an entirely text-free visual instead.
+
+""" + TEXT_RENDERING_RULES + """
 
 Style guidance: clean premium composition, cinematic lighting, appropriate to
 the field (modern workspace, abstract 3D, data-forward editorial, etc.), shallow
@@ -75,11 +111,12 @@ depth of field, no people unless the topic is explicitly about people/teams.
 
 Output fields:
 - image_prompt: the full detailed positive prompt for the image model — it MUST
-  repeat the chosen language and demand the text-in-image rules above
+  repeat the chosen language and obey the text-in-image rules above
 - visual_style: short style descriptor
 - composition: framing/composition notes
 - negative_prompt: what to avoid — including misspelled/gibberish text, text in
-  the wrong language, stray unrelated words, watermarks, logos
+  the wrong language, stray hyphens from spelled-out words, stray unrelated
+  words, watermarks, logos
 
 LINKEDIN IMAGE GUIDELINES (authoritative — the concept MUST satisfy every one):
 """ + image_rules_text()
@@ -119,8 +156,8 @@ TEXT-IN-IMAGE RULE (critical):
   post's core concept in a real meaningful phrase, be spelled correctly and
   written in the user's chosen language (its real script). No gibberish, no
   wrong-language text.
-- Prefer a clean visual with little or no text; only add text when it clearly
-  adds topical meaning.
+
+""" + TEXT_RENDERING_RULES + """
 
 Style: clean premium composition, cinematic lighting, appropriate to the field,
 shallow depth of field, no people unless the topic is explicitly about
@@ -128,11 +165,12 @@ people/teams.
 
 Output fields:
 - image_prompt: the full detailed positive prompt for the image model (repeat
-  the chosen language and the text-in-image rules above)
+  the chosen language and obey the text-in-image rules above)
 - visual_style: short style descriptor
 - composition: framing/composition notes
 - negative_prompt: what to avoid — including misspelled/gibberish text, wrong-
-  language text, copying the previous concept, watermarks, logos
+  language text, stray hyphens from spelled-out words, copying the previous
+  concept, watermarks, logos
 """
 
 IMAGE_REGEN_HUMAN = """Topic: {topic}
@@ -156,6 +194,7 @@ ImageRegenSchema = ImagePromptOutput
 __all__ = [
     "hashtag_prompt",
     "HashtagSchema",
+    "TEXT_RENDERING_RULES",
     "image_prompt_template",
     "ImagePromptSchema",
     "image_regen_template",
