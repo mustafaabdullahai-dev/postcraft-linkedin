@@ -115,6 +115,10 @@ class ImagePromptOutput(BaseModel):
     visual_style: str
     composition: str
     negative_prompt: str
+    # Rendered deterministically on top of the generated image rather than
+    # asked of the image model, which cannot spell. Empty means no overlay.
+    overlay_text: str = ""
+    overlay_placement: str = "bottom"
 
 
 class ValidationOutput(BaseModel):

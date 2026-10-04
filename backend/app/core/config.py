@@ -67,7 +67,12 @@ class Settings(BaseSettings):
 
     # Image model
     image_provider: str = "auto"  # auto | qwen | openrouter | gemini | mock
-    qwen_image_model: str = "wan2.2-t2i-flash"  # flash tier is far faster than wan2.1 turbo queues
+    # Qwen-Image is the text-to-image family that actually renders lettering;
+    # the Wan models (wan2.2-t2i-flash) are video-generation weights and treat
+    # letterforms as texture, so words come out misspelled. The "-pro" tier is
+    # documented as the stronger variant for text rendering. Note there is no
+    # 2.1 release — Alibaba ships 2.0 and 3.0. Requires 512x512..2048x2048.
+    qwen_image_model: str = "qwen-image-2.0-pro"
     # DashScope-native services endpoint used for async image synthesis + task polling.
     qwen_image_services_url: str = "https://dashscope-intl.aliyuncs.com/api/v1"
     image_size: str = "1024x1024"

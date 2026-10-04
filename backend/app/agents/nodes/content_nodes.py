@@ -227,7 +227,12 @@ async def generate_hashtags(state: LinkedInPostState, ctx: NodeContext = None) -
 
 async def generate_image_prompt(state: LinkedInPostState, ctx: NodeContext = None) -> Dict[str, Any]:
     if state.get("include_image") is False:
-        return {"image_prompt": "", "image_negative_prompt": ""}
+        return {
+            "image_prompt": "",
+            "image_negative_prompt": "",
+            "overlay_text": "",
+            "overlay_placement": "bottom",
+        }
     result: ImagePromptOutput = await ctx.text_provider.structured(
         ImagePromptOutput,
         image_prompts.IMAGE_PROMPT_SYSTEM,
@@ -244,6 +249,8 @@ async def generate_image_prompt(state: LinkedInPostState, ctx: NodeContext = Non
     return {
         "image_prompt": result.image_prompt,
         "image_negative_prompt": result.negative_prompt,
+        "overlay_text": (result.overlay_text or "").strip(),
+        "overlay_placement": result.overlay_placement or "bottom",
     }
 
 
@@ -267,6 +274,8 @@ async def regenerate_image_prompt(state: LinkedInPostState, ctx: NodeContext = N
     return {
         "image_prompt": result.image_prompt,
         "image_negative_prompt": result.negative_prompt,
+        "overlay_text": (result.overlay_text or "").strip(),
+        "overlay_placement": result.overlay_placement or "bottom",
     }
 
 
@@ -322,8 +331,21 @@ async def generate_image(state: LinkedInPostState, ctx: NodeContext = None) -> D
     prompt = state.get("image_prompt", "") or state.get("topic", "")
     logger.info("generating image", provider=getattr(ctx.image_provider, "name", "?"))
     result = await ctx.image_provider.generate_image(prompt)
+
+    # Image models cannot spell, so any headline is drawn here instead. The
+    # concept asks for a text-free visual, which keeps the two from colliding.
+    overlay = (state.get("overlay_text") or "").strip()
+    image_url = result.image_url
+    if overlay:
+        from app.services.image_overlay import overlay_result_url
+
+        image_url = overlay_result_url(
+            image_url, overlay, state.get("overlay_placement") or "bottom"
+        )
+        logger.info("drew text overlay", chars=len(overlay))
+
     return {
-        "image_url": result.image_url,
+        "image_url": image_url,
         "image_provider": result.provider,
     }
 

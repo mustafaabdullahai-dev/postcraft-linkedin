@@ -57,7 +57,54 @@ class QwenImageProvider(ImageModelProvider):
         try:
             return await self._openai_compatible(prompt)
         except _CompatibleImageUnsupported:
+            pass
+        try:
+            return await self._dashscope_multimodal(prompt)
+        except _CompatibleImageUnsupported:
             return await self._dashscope_async(prompt)
+
+    async def _dashscope_multimodal(self, prompt: str) -> ImageResult:
+        """Qwen-Image's native endpoint.
+
+        The Qwen-Image family (qwen-image-2.0-pro and siblings) is not served by
+        the OpenAI-compatible `/images/generations` route, and unlike the Wan
+        models it does not go through `image-synthesis` either — it uses
+        multimodal-generation and answers with a signed object-storage URL.
+        """
+        import httpx
+
+        url = f"{self._services_base}/services/aigc/multimodal-generation/generation"
+        payload = {
+            "model": self._model,
+            "input": {
+                "messages": [{"role": "user", "content": [{"text": prompt}]}]
+            },
+            "parameters": {
+                "size": self._size.replace("x", "*"),
+                "n": 1,
+                "watermark": False,
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code in (400, 404, 405):
+                raise _CompatibleImageUnsupported(resp.status_code)
+            resp.raise_for_status()
+            data = resp.json()
+
+        choices = ((data.get("output") or {}).get("choices") or [])
+        if not choices:
+            raise RuntimeError("Qwen image response contained no choices")
+        content = ((choices[0].get("message") or {}).get("content") or [])
+        # This endpoint names the field `image`; normalise it to `url` so the
+        # shared result parser can handle it.
+        items = [{"url": part["image"]} for part in content if part.get("image")]
+        return self._items_result(items)
 
     async def _openai_compatible(self, prompt: str) -> ImageResult:
         import httpx

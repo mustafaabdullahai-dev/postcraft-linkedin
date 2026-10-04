@@ -45,39 +45,29 @@ HashtagSchema = HashtagOutput
 # Shared by the initial concept and the regeneration concept. Both must enforce
 # identical text rendering rules, otherwise a regenerated image silently loses
 # the spelling guarantees the first one had.
-TEXT_RENDERING_RULES = """HOW TO WRITE TEXT INTO THE IMAGE PROMPT (critical — follow exactly):
+TEXT_RENDERING_RULES = """HOW TO HANDLE TEXT (critical — follow exactly):
 
-These rules govern how you must WRITE the `image_prompt` field itself, not how
-you describe the topic. Image models render text unreliably unless the prompt
-makes the characters unambiguous.
+Image models cannot reliably spell. Diffusion- and video-based generators treat
+letterforms as texture, so ANY instruction to draw words inside `image_prompt`
+produces something letter-shaped rather than the word. Spelling a word out
+character-by-character does not fix this; it mostly trades a misspelling for
+stray hyphens.
 
-1. Separate the text from the visual description, and put the exact text in
-   quotation marks or ALL CAPS so the model can tell lettering apart from
-   scene description.
-   • Good: A clean, modern technology logo. The image features a sleek digital
-     brain icon. Below the icon, the literal text "AI AGENTS" must be cleanly
-     printed in a bold, white sans-serif font.
-   • Bad: A logo about AI agents with some text.
+So text is never delegated to the image model:
 
-2. For words that image models frequently misread, force the model to attend to
-   the individual characters by spelling them out in the prompt.
-   • Good: A neon sign on a dark wall that reads "A-I  A-G-E-N-T-S".
-   • Use this for acronym-like or invented words (AI, AGENTS, SaaS, Kubernetes,
-     MLOps) and for any word in a non-Latin script the model is likely to
-     garble. Do NOT spell out ordinary English words — it makes them worse.
-
-3. State the text's placement, font, colour and size explicitly ("bottom
-   centre", "bold white sans-serif", "large, filling the lower third"), and say
-   it must be printed cleanly and legibly.
-
-4. Repeat the required language explicitly when the image carries any text.
-
-5. Prefer an entirely text-free visual whenever the words add no topical
-   meaning. Text is a liability: only spend it when it carries the concept.
-
-6. In `negative_prompt`, always exclude stray hyphens, letter-spacing artifacts
-   and leftover scaffolding from spelled-out text, plus misspelled, truncated,
-   duplicated or gibberish lettering and any text in the wrong language."""
+1. `image_prompt` MUST describe a completely TEXT-FREE visual. Actively ask for
+   blank, clean, uncluttered areas where a headline can sit, and never mention
+   words, letters, labels, titles, captions, signage or UI text.
+   • Good: "...with generous empty negative space across the lower third."
+2. Put the exact headline in the separate `overlay_text` field. It is drawn
+   afterwards by a real font renderer, so it is always spelled correctly and in
+   the user's language (its real script). Up to ~8 words, no trailing period.
+3. `overlay_placement` is "bottom" or "top". Default to "bottom".
+4. If the concept genuinely needs no words, return an empty `overlay_text`
+   rather than forcing text onto the image.
+5. In `negative_prompt`, always exclude text, lettering, words, letters,
+   numbers, captions, watermarks, signatures and typography — the artwork must
+   arrive blank of any writing, and the overlay is added by other means."""
 
 IMAGE_PROMPT_SYSTEM = """You design a UNIQUE image concept for a LinkedIn post image.
 
@@ -93,16 +83,6 @@ The image must:
 - look premium, professional, suitable for a LinkedIn feed
 - avoid excessive text, watermarks, logos, misleading diagrams, unrelated objects
 
-TEXT-IN-IMAGE RULE (critical):
-- ANY visible words, labels, headlines, titles, list items, chart/axis labels,
-  UI text, banners or speech in the image must be literally ON-TOPIC — they must
-  express the post's core concept in a real, meaningful phrase (e.g. the exact
-  topic keyword or a short topical tagline), never generic marketing words or
-  unrelated wording.
-- Every visible word must be written CORRECTLY, completely and in the user's
-  chosen language (its real script). No gibberish, no misspelled words, no
-  English text when another language is requested, no mixed/wrong scripts.
-
 """ + TEXT_RENDERING_RULES + """
 
 Style guidance: clean premium composition, cinematic lighting, appropriate to
@@ -110,13 +90,14 @@ the field (modern workspace, abstract 3D, data-forward editorial, etc.), shallow
 depth of field, no people unless the topic is explicitly about people/teams.
 
 Output fields:
-- image_prompt: the full detailed positive prompt for the image model — it MUST
-  repeat the chosen language and obey the text-in-image rules above
+- image_prompt: the full detailed positive prompt for the image model. It MUST
+  describe a text-free visual with room for a headline, per the rules above
 - visual_style: short style descriptor
 - composition: framing/composition notes
-- negative_prompt: what to avoid — including misspelled/gibberish text, text in
-  the wrong language, stray hyphens from spelled-out words, stray unrelated
-  words, watermarks, logos
+- overlay_text: the exact headline to draw on top, or "" for none
+- overlay_placement: "bottom" or "top"
+- negative_prompt: what to avoid — including any text, lettering, watermarks,
+  logos
 
 LINKEDIN IMAGE GUIDELINES (authoritative — the concept MUST satisfy every one):
 """ + image_rules_text()
@@ -164,13 +145,14 @@ shallow depth of field, no people unless the topic is explicitly about
 people/teams.
 
 Output fields:
-- image_prompt: the full detailed positive prompt for the image model (repeat
-  the chosen language and obey the text-in-image rules above)
+- image_prompt: the full detailed positive prompt for the image model; text-free
+  with room for a headline, per the rules above
 - visual_style: short style descriptor
 - composition: framing/composition notes
-- negative_prompt: what to avoid — including misspelled/gibberish text, wrong-
-  language text, stray hyphens from spelled-out words, copying the previous
-  concept, watermarks, logos
+- overlay_text: the exact headline to draw on top, or "" for none
+- overlay_placement: "bottom" or "top"
+- negative_prompt: what to avoid — including any text, lettering, watermarks,
+  logos, copying the previous concept
 """
 
 IMAGE_REGEN_HUMAN = """Topic: {topic}
