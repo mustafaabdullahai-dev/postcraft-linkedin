@@ -5,8 +5,6 @@ were invisible to the counter, so a post showing 8 emoji validated as 3.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.services.validator import KEYCAP_RUN_RE, ValidationRules, count_emojis
 
 
@@ -44,7 +42,7 @@ def test_keycap_run_detected_on_one_line():
 
 def test_keycap_run_not_detected_when_split_per_line():
     body = "1\uFE0F\u20E3 one\n2\uFE0F\u20E3 two\n3\uFE0F\u20E3 three"
-    assert not any(KEYCAP_RUN_RE.search(l) for l in body.splitlines())
+    assert not any(KEYCAP_RUN_RE.search(line) for line in body.splitlines())
 
 
 def _long_enough(tags=("#AI", "#Automation", "#SaaS", "#Product", "#Growth")):
