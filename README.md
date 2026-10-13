@@ -460,3 +460,7 @@ Notable suites:
   for `qwen-image-2.0*`; base `qwen-image` only accepts a fixed size list.
 - **Never commit `.env` or `backend/data/`** — they hold credentials, user records,
   posts and uploads.
+
+---
+
+#GenAIwithAM
